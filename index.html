@@ -17329,11 +17329,14 @@ function renderEventFinanceSummaryFromComments(commentId) {
             if (event.iCalUID) possibleIds.add(event.iCalUID);
             if (event.recurringEventId) possibleIds.add(event.recurringEventId);
 
+            // Hash universale basato SOLO su titolo + data/ora (senza organizer!)
             const summary = (event.summary || event.title || 'untitled').trim().toLowerCase();
-            const startTime = event.start?.dateTime || event.start?.date || event.date || '';
-            const organizer = event.organizer?.email || event.creator?.email || '';
+            let startTime = event.start?.dateTime || event.start?.date || event.date || '';
+            if (startTime.includes('T')) {
+                startTime = startTime.split('+')[0].split('Z')[0].split('.')[0];
+            }
             if (summary && startTime) {
-                const hashId = 'evt_' + simpleHash(`${summary}|${startTime}|${organizer}`);
+                const hashId = 'evt_' + simpleHash(`${summary}|${startTime}`);
                 possibleIds.add(hashId);
             }
 
@@ -29830,38 +29833,31 @@ async function navigateToTaskComment(projectId, taskId) {
     }, 500);
 }
 
-// Helper: Ottiene l'ID universale per i commenti (condiviso tra tutti i partecipanti)
-// Strategia: iCalUID > recurringEventId > hash(summary+startTime+organizer)
+// Helper: Ottiene l'ID universale per i commenti (condiviso tra eventi duplicati su calendari diversi)
+// Strategia PRINCIPALE: hash(summary+startTime) - identifica eventi duplicati con stesso titolo e ora
 function getEventCommentId(event, isGoogle) {
     if (!event) return null;
 
     if (isGoogle) {
-        // PRIORITÀ 1: iCalUID - identico per tutti i partecipanti
-        if (event.iCalUID) {
-            console.log('🔑 getEventCommentId usando iCalUID:', event.iCalUID);
-            return event.iCalUID;
-        }
-
-        // PRIORITÀ 2: recurringEventId - per eventi ricorrenti
-        if (event.recurringEventId) {
-            console.log('🔑 getEventCommentId usando recurringEventId:', event.recurringEventId);
-            return event.recurringEventId;
-        }
-
-        // PRIORITÀ 3: Genera un ID universale basato sui dati condivisi dell'evento
-        // Tutti i partecipanti vedono lo stesso: titolo, data/ora inizio, organizzatore
+        // PRIORITÀ UNICA: Genera un ID universale basato su TITOLO + DATA/ORA
+        // Questo permette di unificare eventi duplicati su calendari diversi
         const summary = (event.summary || 'untitled').trim().toLowerCase();
         const startTime = event.start?.dateTime || event.start?.date || '';
-        const organizer = event.organizer?.email || event.creator?.email || '';
 
-        // Crea un hash semplice ma deterministico
-        const dataString = `${summary}|${startTime}|${organizer}`;
+        // Normalizza la data (rimuovi millisecondi e timezone per uniformità)
+        let normalizedTime = startTime;
+        if (startTime.includes('T')) {
+            // Prendi solo data e ora (senza timezone)
+            normalizedTime = startTime.split('+')[0].split('Z')[0].split('.')[0];
+        }
+
+        // Crea un hash semplice ma deterministico (SENZA organizer!)
+        const dataString = `${summary}|${normalizedTime}`;
         const universalId = 'evt_' + simpleHash(dataString);
 
-        console.log('🔑 getEventCommentId generato hash:', {
+        console.log('🔑 getEventCommentId generato hash universale:', {
             summary: summary,
-            startTime: startTime,
-            organizer: organizer,
+            startTime: normalizedTime,
             universalId: universalId
         });
 
@@ -30163,12 +30159,15 @@ function renderEventComments(eventId) {
             if (event.iCalUID) possibleIds.add(event.iCalUID);
             if (event.recurringEventId) possibleIds.add(event.recurringEventId);
 
-            // Genera anche hash universale
+            // Genera hash universale basato SOLO su titolo + data/ora (senza organizer!)
             const summary = (event.summary || event.title || 'untitled').trim().toLowerCase();
-            const startTime = event.start?.dateTime || event.start?.date || event.date || '';
-            const organizer = event.organizer?.email || event.creator?.email || '';
+            let startTime = event.start?.dateTime || event.start?.date || event.date || '';
+            // Normalizza la data
+            if (startTime.includes('T')) {
+                startTime = startTime.split('+')[0].split('Z')[0].split('.')[0];
+            }
             if (summary && startTime) {
-                const hashId = 'evt_' + simpleHash(`${summary}|${startTime}|${organizer}`);
+                const hashId = 'evt_' + simpleHash(`${summary}|${startTime}`);
                 possibleIds.add(hashId);
             }
 
