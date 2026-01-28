@@ -4330,17 +4330,20 @@ function setupSupabaseAuth() {
         return;
     }
 
+    let profileLoadingInProgress = false;
+
     sb.auth.onAuthStateChange(async (event, session) => {
         console.log('🔐 Auth event:', event);
 
         // Handle both SIGNED_IN and INITIAL_SESSION for reliability
         if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
-            // Skip if already processed
-            if (currentUser?.id === session.user.id && userProfile) {
-                console.log('⏭️ Session already loaded, skipping');
+            // Skip if already processed or loading in progress
+            if (currentUser?.id === session.user.id && (userProfile || profileLoadingInProgress)) {
+                console.log('⏭️ Session already loaded or loading, skipping');
                 return;
             }
 
+            profileLoadingInProgress = true;
             currentUser = session.user;
             isLoggedIn = true;
             isGoogleSignedIn = true;
@@ -4356,6 +4359,7 @@ function setupSupabaseAuth() {
 
             // Carica o crea profilo
             await ensureUserProfile();
+            profileLoadingInProgress = false;
 
             // Mostra app
             showApp();
@@ -6064,7 +6068,7 @@ const undoSystem = {
                 case 'deleteTask':
                     state.tasks.push(action.data);
                     saveStateAndSync();
-                    renderTasks();
+                    renderTasksPage();
                     showToast('✅ Task ripristinato', 'success');
                     break;
 
@@ -14922,7 +14926,7 @@ function moveTaskToKanbanColumn(taskId, status) {
 
     saveStateAndSync();
     renderKanban();
-    renderTasks();
+    renderTasksPage();
 }
 
 function setupMatrixDragDrop() {
@@ -14976,7 +14980,7 @@ function moveTaskToQuadrant(taskId, quadrant) {
     saveStateAndSync();
     renderMatrix();
     renderKanban();
-    renderTasks();
+    renderTasksPage();
     showToast(`Task spostato in ${quadrantNames[quadrant]}`, 'success');
 }
 
@@ -24745,7 +24749,7 @@ function completeTaskFromDetail(taskId) {
         saveStateAndSync();
         closeModal('customDetailModal');
         renderAgendaView();
-        renderTasks();
+        renderTasksPage();
         showToast('Task completato! 🎉', 'success');
         addXP(10);
     }
@@ -24801,7 +24805,7 @@ async function scheduleTaskToSlot(task, slot) {
         saveStateAndSync();
         closeModal('customDetailModal');
         renderAgendaView();
-        renderTasks();
+        renderTasksPage();
         showToast(`Task schedulato alle ${slot.start.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}! 📅`, 'success');
     }
 }
