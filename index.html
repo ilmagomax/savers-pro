@@ -5510,6 +5510,25 @@ async function loadSaversLogsFromSupabase() {
         if (dbLogs && dbLogs.length > 0) {
             state.saversLogs = dbLogs;
             console.log(`✅ Loaded ${dbLogs.length} SAVERS logs from Supabase`);
+
+            // Trova il log di oggi e applica a state.today.routineCompleted
+            const today = state.today?.date || new Date().toISOString().split('T')[0];
+            const todayLog = dbLogs.find(l => l.date === today);
+            if (todayLog) {
+                state.today.routineCompleted = [
+                    todayLog.silence_completed || false,
+                    todayLog.affirmations_completed || false,
+                    todayLog.visualization_completed || false,
+                    todayLog.exercise_completed || false,
+                    todayLog.reading_completed || false,
+                    todayLog.scribing_completed || false
+                ];
+                console.log('✅ Today routine loaded:', state.today.routineCompleted);
+                // Aggiorna UI
+                if (typeof renderRoutinePage === 'function') {
+                    renderRoutinePage();
+                }
+            }
         }
     } catch (err) { console.error('Error loading SAVERS logs:', err); }
 }
@@ -11782,7 +11801,7 @@ function renderRoutineActivities() {
     `).join('');
 }
 
-function toggleRoutineActivity(index) {
+async function toggleRoutineActivity(index) {
     state.today.routineCompleted[index] = !state.today.routineCompleted[index];
 
     if (state.today.routineCompleted[index]) {
@@ -11813,7 +11832,28 @@ function toggleRoutineActivity(index) {
         });
     }
 
-    saveStateAndSync();
+    // Salva routine su Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const routineLog = {
+            date: state.today.date,
+            silence: state.today.routineCompleted[0] || false,
+            affirmations: state.today.routineCompleted[1] || false,
+            visualization: state.today.routineCompleted[2] || false,
+            exercise: state.today.routineCompleted[3] || false,
+            reading: state.today.routineCompleted[4] || false,
+            scribing: state.today.routineCompleted[5] || false,
+            mood: state.today.mood || null,
+            sleepHours: state.today.sleepHours || null,
+            waterGlasses: state.today.waterGlasses || null
+        };
+        saveSaversLogToDB(routineLog)
+            .then(() => console.log('✅ SAVERS log saved'))
+            .catch(err => console.warn('Error saving SAVERS log:', err));
+    } else {
+        saveStateAndSync();
+    }
+
     renderRoutinePage();
     updateAllStats();
     checkBadges();
@@ -15478,15 +15518,19 @@ async function saveTask() {
     if (editingTaskId) {
         // Modifica task esistente
         const task = state.tasks.find(t => t.id === editingTaskId);
+        console.log('📝 Editing task:', editingTaskId, 'found:', !!task, '_supabaseId:', task?._supabaseId);
         if (task) {
             taskData.actualTime = task.actualTime || 0;
             Object.assign(task, taskData);
             task.updatedAt = new Date().toISOString();
             isEdit = true;
 
-            // Update in Supabase
-            if (sb && currentUser && task._supabaseId) {
-                updateTaskInDB(task._supabaseId, taskData)
+            // Update in Supabase - usa id se _supabaseId non c'è (sono uguali per task da DB)
+            const supabaseId = task._supabaseId || task.id;
+            if (sb && currentUser && supabaseId) {
+                console.log('📤 Updating task in Supabase:', supabaseId);
+                updateTaskInDB(supabaseId, taskData)
+                    .then(() => console.log('✅ Task updated in Supabase'))
                     .catch(err => console.warn('Error updating task in DB:', err));
             } else {
                 saveStateAndSync();
