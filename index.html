@@ -29,202 +29,31 @@
     <script>
         // ===========================================
         // SUPABASE CONFIGURATION
-        // Sostituisci con le tue credenziali da Supabase Dashboard > Settings > API
         // ===========================================
         const SUPABASE_URL = 'https://lsrzcsymiuoutcmhcain.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_NFzbjbgsGgEn5enQg7M2VQ_XJoFb9RM';
 
-        // Initialize Supabase Client
-        let supabase = null;
-        try {
-            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            console.log('✅ Supabase initialized:', supabase ? 'OK' : 'FAILED');
-        } catch (e) {
-            console.warn('⚠️ Supabase not configured yet. Running in local mode.');
-        }
+        // Supabase client - initialized lazily
+        var supabaseClient = null;
 
-        // Auth state
-        let currentUser = null;
-        let userProfile = null;
-        let userOrganization = null;
+        // Get or initialize Supabase client
+        function getSupabase() {
+            if (supabaseClient) return supabaseClient;
 
-        // ===========================================
-        // SUPABASE AUTH STATE LISTENER
-        // ===========================================
-        if (supabase) {
-            supabase.auth.onAuthStateChange(async (event, session) => {
-                console.log('🔐 Auth event:', event);
-
-                if (event === 'SIGNED_IN' && session) {
-                    currentUser = session.user;
-                    console.log('✅ User signed in:', currentUser.email);
-
-                    // Salva token Google per Calendar API
-                    if (session.provider_token) {
-                        localStorage.setItem('google_access_token', session.provider_token);
-                    }
-                    if (session.provider_refresh_token) {
-                        localStorage.setItem('google_refresh_token', session.provider_refresh_token);
-                    }
-
-                    // Carica o crea profilo
-                    await ensureUserProfile();
-
-                    // Mostra app
-                    showApp();
-
-                } else if (event === 'SIGNED_OUT') {
-                    currentUser = null;
-                    userProfile = null;
-                    userOrganization = null;
-                    showLoginScreen();
-
-                } else if (event === 'TOKEN_REFRESHED' && session) {
-                    if (session.provider_token) {
-                        localStorage.setItem('google_access_token', session.provider_token);
-                    }
-                }
-            });
-        }
-
-        // Ensure user profile exists in database
-        async function ensureUserProfile() {
-            if (!currentUser || !supabase) return;
-
-            try {
-                // Cerca profilo esistente
-                let { data: profile, error } = await supabase
-                    .from('profiles')
-                    .select('*, organization:organizations(*)')
-                    .eq('id', currentUser.id)
-                    .single();
-
-                if (error && error.code === 'PGRST116') {
-                    // Nuovo utente - crea organizzazione e profilo
-                    console.log('📝 Creating new user profile...');
-
-                    // 1. Crea organizzazione
-                    const orgName = (currentUser.user_metadata?.full_name || currentUser.email.split('@')[0]) + "'s Workspace";
-                    const { data: org, error: orgError } = await supabase
-                        .from('organizations')
-                        .insert({ name: orgName })
-                        .select()
-                        .single();
-
-                    if (orgError) {
-                        console.error('Error creating org:', orgError);
-                        showToast('Errore creazione account', 'error');
-                        return;
-                    }
-
-                    // 2. Crea profilo
-                    const { data: newProfile, error: profileError } = await supabase
-                        .from('profiles')
-                        .insert({
-                            id: currentUser.id,
-                            organization_id: org.id,
-                            email: currentUser.email,
-                            full_name: currentUser.user_metadata?.full_name || currentUser.email.split('@')[0],
-                            avatar_url: currentUser.user_metadata?.avatar_url,
-                            org_role: 'owner'
-                        })
-                        .select('*, organization:organizations(*)')
-                        .single();
-
-                    if (profileError) {
-                        console.error('Error creating profile:', profileError);
-                        showToast('Errore creazione profilo', 'error');
-                        return;
-                    }
-
-                    // 3. Aggiorna owner_id nell'organizzazione
-                    await supabase
-                        .from('organizations')
-                        .update({ owner_id: currentUser.id })
-                        .eq('id', org.id);
-
-                    profile = newProfile;
-                    showToast('Benvenuto in SAVERS Pro! 🎉', 'success');
-                } else if (error) {
-                    console.error('Error loading profile:', error);
-                    return;
-                }
-
-                // Salva in variabili globali
-                userProfile = profile;
-                userOrganization = profile?.organization;
-
-                // Aggiorna anche lo state dell'app
-                if (typeof state !== 'undefined') {
-                    state.profile = profile;
-                    state.organization = profile?.organization;
-                    state.organizationId = profile?.organization_id;
-                }
-
-                // Aggiorna UI profilo
-                updateProfileUI();
-
-                console.log('✅ Profile loaded:', profile?.full_name);
-            } catch (err) {
-                console.error('Profile error:', err);
-            }
-        }
-
-        // Update profile info in UI
-        function updateProfileUI() {
-            if (!userProfile) return;
-
-            // Aggiorna avatar
-            const avatarEls = document.querySelectorAll('.profile-avatar, #userAvatar, .user-avatar');
-            avatarEls.forEach(el => {
-                if (userProfile.avatar_url) {
-                    el.innerHTML = '<img src="' + userProfile.avatar_url + '" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
-                } else {
-                    el.textContent = userProfile.full_name?.charAt(0)?.toUpperCase() || '?';
-                }
-            });
-
-            // Aggiorna nome
-            const nameEls = document.querySelectorAll('.profile-name, #profileName, #userName, .user-name');
-            nameEls.forEach(el => {
-                el.textContent = userProfile.full_name || 'Utente';
-            });
-
-            // Aggiorna email se presente
-            const emailEls = document.querySelectorAll('.profile-email, #profileEmail, #userEmail');
-            emailEls.forEach(el => {
-                el.textContent = userProfile.email || '';
-            });
-        }
-
-        // Check existing session on page load
-        async function checkExistingSession() {
-            if (!supabase) {
-                console.log('⚠️ Supabase not configured, using local mode');
-                showLoginScreen();
-                return;
+            if (window.supabase && window.supabase.createClient) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('✅ Supabase initialized');
+                return supabaseClient;
             }
 
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                currentUser = session.user;
-                await ensureUserProfile();
-                showApp();
-            } else {
-                showLoginScreen();
-            }
+            console.warn('⚠️ Supabase library not available');
+            return null;
         }
 
-        // Show login screen
-        function showLoginScreen() {
-            const loginScreen = document.getElementById('loginScreen');
-            const app = document.getElementById('app');
-            if (loginScreen) {
-                loginScreen.classList.remove('hidden');
-                loginScreen.classList.remove('loading');
-            }
-            if (app) app.style.display = 'none';
-        }
+        // Auth state - use var for global scope
+        var currentUser = null;
+        var userProfile = null;
+        var userOrganization = null;
     </script>
 
     <!-- Legacy styles (will be removed after CSS extraction is verified) -->
@@ -4489,12 +4318,195 @@ const CONFIG = {
     ]
 };
 
+// ===========================================
+// SUPABASE AUTH FUNCTIONS
+// ===========================================
+
+// Setup auth state listener
+function setupSupabaseAuth() {
+    const sb = getSupabase();
+    if (!sb) {
+        console.warn('⚠️ Supabase not available');
+        return;
+    }
+
+    sb.auth.onAuthStateChange(async (event, session) => {
+        console.log('🔐 Auth event:', event);
+
+        if (event === 'SIGNED_IN' && session) {
+            currentUser = session.user;
+            console.log('✅ User signed in:', currentUser.email);
+
+            // Salva token Google per Calendar API
+            if (session.provider_token) {
+                localStorage.setItem('google_access_token', session.provider_token);
+            }
+            if (session.provider_refresh_token) {
+                localStorage.setItem('google_refresh_token', session.provider_refresh_token);
+            }
+
+            // Carica o crea profilo
+            await ensureUserProfile();
+
+            // Mostra app
+            showApp();
+
+        } else if (event === 'SIGNED_OUT') {
+            currentUser = null;
+            userProfile = null;
+            userOrganization = null;
+            showLoginScreen();
+
+        } else if (event === 'TOKEN_REFRESHED' && session) {
+            if (session.provider_token) {
+                localStorage.setItem('google_access_token', session.provider_token);
+            }
+        }
+    });
+}
+
+// Ensure user profile exists in database
+async function ensureUserProfile() {
+    const sb = getSupabase();
+    if (!currentUser || !sb) return;
+
+    try {
+        // Cerca profilo esistente
+        let { data: profile, error } = await sb
+            .from('profiles')
+            .select('*, organization:organizations(*)')
+            .eq('id', currentUser.id)
+            .single();
+
+        if (error && error.code === 'PGRST116') {
+            // Nuovo utente - crea organizzazione e profilo
+            console.log('📝 Creating new user profile...');
+
+            // 1. Crea organizzazione
+            const orgName = (currentUser.user_metadata?.full_name || currentUser.email.split('@')[0]) + "'s Workspace";
+            const { data: org, error: orgError } = await sb
+                .from('organizations')
+                .insert({ name: orgName })
+                .select()
+                .single();
+
+            if (orgError) {
+                console.error('Error creating org:', orgError);
+                showToast('Errore creazione account', 'error');
+                return;
+            }
+
+            // 2. Crea profilo
+            const { data: newProfile, error: profileError } = await sb
+                .from('profiles')
+                .insert({
+                    id: currentUser.id,
+                    organization_id: org.id,
+                    email: currentUser.email,
+                    full_name: currentUser.user_metadata?.full_name || currentUser.email.split('@')[0],
+                    avatar_url: currentUser.user_metadata?.avatar_url,
+                    org_role: 'owner'
+                })
+                .select('*, organization:organizations(*)')
+                .single();
+
+            if (profileError) {
+                console.error('Error creating profile:', profileError);
+                showToast('Errore creazione profilo', 'error');
+                return;
+            }
+
+            // 3. Aggiorna owner_id nell'organizzazione
+            await sb
+                .from('organizations')
+                .update({ owner_id: currentUser.id })
+                .eq('id', org.id);
+
+            profile = newProfile;
+            showToast('Benvenuto in SAVERS Pro! 🎉', 'success');
+        } else if (error) {
+            console.error('Error loading profile:', error);
+            return;
+        }
+
+        // Salva in variabili globali
+        userProfile = profile;
+        userOrganization = profile?.organization;
+
+        // Aggiorna anche lo state dell'app
+        if (typeof state !== 'undefined') {
+            state.profile = profile;
+            state.organization = profile?.organization;
+            state.organizationId = profile?.organization_id;
+        }
+
+        // Aggiorna UI profilo
+        updateSupabaseProfileUI();
+
+        console.log('✅ Profile loaded:', profile?.full_name);
+    } catch (err) {
+        console.error('Profile error:', err);
+    }
+}
+
+// Update profile info in UI
+function updateSupabaseProfileUI() {
+    if (!userProfile) return;
+
+    // Aggiorna avatar
+    const avatarEls = document.querySelectorAll('.profile-avatar, #userAvatar, .user-avatar');
+    avatarEls.forEach(el => {
+        if (userProfile.avatar_url) {
+            el.innerHTML = '<img src="' + userProfile.avatar_url + '" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+        } else {
+            el.textContent = userProfile.full_name?.charAt(0)?.toUpperCase() || '?';
+        }
+    });
+
+    // Aggiorna nome
+    const nameEls = document.querySelectorAll('.profile-name, #profileName, #userName, .user-name');
+    nameEls.forEach(el => {
+        el.textContent = userProfile.full_name || 'Utente';
+    });
+
+    // Aggiorna email se presente
+    const emailEls = document.querySelectorAll('.profile-email, #profileEmail, #userEmail');
+    emailEls.forEach(el => {
+        el.textContent = userProfile.email || '';
+    });
+}
+
+// Check existing session on page load
+async function checkExistingSession() {
+    const sb = getSupabase();
+    if (!sb) {
+        console.log('⚠️ Supabase not configured, using local mode');
+        // Fallback to old login check
+        checkSavedLogin();
+        return;
+    }
+
+    try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (session) {
+            currentUser = session.user;
+            await ensureUserProfile();
+            showApp();
+        } else {
+            showLoginScreen();
+        }
+    } catch (err) {
+        console.error('Session check error:', err);
+        showLoginScreen();
+    }
+}
+
 // Super Admin Configuration
 const SUPER_ADMIN_PASSWORD = 'MagoMax2024!';
 const SUPER_ADMIN_EMAILS = ['ilmagicartista@gmail.com'];
 
 // Stato autenticazione Cloud (Google Sheets)
-let currentUser = null;
+// currentUser è già dichiarato globalmente nel head per Supabase
 let isLoggedIn = false;
 let syncInProgress = false;
 let lastSyncTime = null;
@@ -7020,8 +7032,9 @@ async function logout() {
 
     try {
         // Logout da Supabase
-        if (supabase) {
-            await supabase.auth.signOut();
+        const sb = getSupabase();
+        if (sb) {
+            await sb.auth.signOut();
         }
 
         // Pulisci stato
@@ -7738,11 +7751,22 @@ async function loginWithGoogle() {
     closeModal('cloudLoginModal');
 
     try {
-        const { data, error } = await supabase.auth.signInWithOAuth({
+        const sb = getSupabase();
+        if (!sb) {
+            showToast('Supabase non inizializzato, riprova', 'error');
+            return;
+        }
+
+        // Determina URL di redirect (production vs development)
+        const redirectUrl = window.location.hostname === 'localhost'
+            ? window.location.origin
+            : 'https://savers-pro.vercel.app';
+
+        const { data, error } = await sb.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
-                redirectTo: window.location.origin,
+                redirectTo: redirectUrl,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent'
@@ -8786,6 +8810,9 @@ function initializeApp() {
 
     // Initialize charts
     setTimeout(initCharts, 500);
+
+    // Setup Supabase auth listener
+    setupSupabaseAuth();
 
     // Check for existing Supabase session
     checkExistingSession();
