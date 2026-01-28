@@ -17596,12 +17596,18 @@ function getAgencyFeesForMonth(yearMonth) {
                 const localEvent = state.events?.find(e => e.id === eventId);
                 if (localEvent) eventName = localEvent.title || 'Evento';
 
-                // Stati: pending (non consegnato), pending_confirmation (in attesa conferma), confirmed (confermato)
+                // Stati:
+                // - pending: non consegnato
+                // - pending_owner_confirmation: consegnato, attesa conferma owner
+                // - pending_animator_confirmation: owner ha modificato, attesa conferma animatore
+                // - confirmed: confermato da entrambi
                 let status = 'pending';
                 if (c.agencyFeeConfirmed) {
                     status = 'confirmed';
+                } else if (c.agencyFeeModifiedByOwner && !c.agencyFeeAnimatorAccepted) {
+                    status = 'pending_animator_confirmation';
                 } else if (c.agencyFeeDelivered) {
-                    status = 'pending_confirmation';
+                    status = 'pending_owner_confirmation';
                 }
 
                 items.push({
@@ -17611,8 +17617,11 @@ function getAgencyFeesForMonth(yearMonth) {
                     date: commentDate,
                     incomeTotal: c.incomeTotal,
                     agencyFee: c.agencyFee,
+                    originalAgencyFee: c.originalAgencyFee || c.agencyFee,
                     delivered: c.agencyFeeDelivered || false,
                     confirmed: c.agencyFeeConfirmed || false,
+                    modifiedByOwner: c.agencyFeeModifiedByOwner || false,
+                    animatorAccepted: c.agencyFeeAnimatorAccepted || false,
                     status: status,
                     authorName: c.authorName,
                     authorEmail: c.authorEmail
@@ -17621,18 +17630,22 @@ function getAgencyFeesForMonth(yearMonth) {
                 if (c.agencyFeeConfirmed) {
                     totalDelivered += c.agencyFee; // Confermati = completati
                 } else {
-                    totalPending += c.agencyFee; // Sia pending che pending_confirmation = da completare
+                    totalPending += c.agencyFee; // Tutto il resto = da completare
                 }
             }
         });
     });
 
-    // Calcola anche totale in attesa di conferma
-    const totalPendingConfirmation = items
-        .filter(i => i.status === 'pending_confirmation')
+    // Calcola totali per stato
+    const totalPendingOwnerConfirmation = items
+        .filter(i => i.status === 'pending_owner_confirmation')
         .reduce((sum, i) => sum + i.agencyFee, 0);
 
-    return { totalFees, totalDelivered, totalPending, totalPendingConfirmation, items };
+    const totalPendingAnimatorConfirmation = items
+        .filter(i => i.status === 'pending_animator_confirmation')
+        .reduce((sum, i) => sum + i.agencyFee, 0);
+
+    return { totalFees, totalDelivered, totalPending, totalPendingOwnerConfirmation, totalPendingAnimatorConfirmation, items };
 }
 
 // Renderizza il wallet Compensi Agenzia
@@ -17679,17 +17692,22 @@ function renderAgencyFeeWallet() {
                         </div>
                         <div style="text-align:right;">
                             ${currentData.items.filter(i => i.status === 'pending').length > 0 ? `
-                                <div style="font-size:0.8rem; color:#6366f1;">
+                                <div style="font-size:0.75rem; color:#6366f1;">
                                     📋 €${currentData.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0).toFixed(2)} da consegnare
                                 </div>
                             ` : ''}
-                            ${currentData.totalPendingConfirmation > 0 ? `
-                                <div style="font-size:0.8rem; color:#f59e0b;">
-                                    ⏳ €${currentData.totalPendingConfirmation.toFixed(2)} in attesa conferma
+                            ${currentData.totalPendingOwnerConfirmation > 0 ? `
+                                <div style="font-size:0.75rem; color:#f59e0b;">
+                                    ⏳ €${currentData.totalPendingOwnerConfirmation.toFixed(2)} attesa owner
+                                </div>
+                            ` : ''}
+                            ${currentData.totalPendingAnimatorConfirmation > 0 ? `
+                                <div style="font-size:0.75rem; color:#ec4899;">
+                                    🔄 €${currentData.totalPendingAnimatorConfirmation.toFixed(2)} da accettare
                                 </div>
                             ` : ''}
                             ${currentData.totalDelivered > 0 ? `
-                                <div style="font-size:0.8rem; color:#10b981;">
+                                <div style="font-size:0.75rem; color:#10b981;">
                                     ✅ €${currentData.totalDelivered.toFixed(2)} confermati
                                 </div>
                             ` : ''}
@@ -17697,29 +17715,55 @@ function renderAgencyFeeWallet() {
                     </div>
                     ${(() => {
                         const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+                        const myEmail = state.profile?.email?.toLowerCase();
                         const hasPendingItems = currentData.items.filter(i => i.status === 'pending').length > 0;
-                        const hasPendingConfirmation = currentData.totalPendingConfirmation > 0;
+                        const hasPendingOwnerConfirmation = currentData.totalPendingOwnerConfirmation > 0;
+                        const hasPendingAnimatorConfirmation = currentData.totalPendingAnimatorConfirmation > 0;
 
-                        if (hasPendingConfirmation && isOwnerOrAdmin) {
-                            // Owner vede bottone per confermare
-                            return `
+                        // Verifica se ci sono item in attesa conferma animatore per ME
+                        const myPendingAnimatorItems = currentData.items.filter(i =>
+                            i.status === 'pending_animator_confirmation' &&
+                            i.authorEmail?.toLowerCase() === myEmail
+                        );
+
+                        let buttons = '';
+
+                        // Animatore: accetta modifiche owner
+                        if (myPendingAnimatorItems.length > 0) {
+                            const myPendingAmount = myPendingAnimatorItems.reduce((s,i) => s + i.agencyFee, 0);
+                            buttons += \`
                                 <div style="margin-top:10px;">
-                                    <button class="btn btn-success btn-sm" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="width:100%;">
-                                        ✅ Conferma Ricezione €${currentData.totalPendingConfirmation.toFixed(2)}
+                                    <button class="btn btn-success btn-sm" onclick="acceptOwnerModification('${currentMonth}')" style="width:100%;">
+                                        ✅ Accetta Modifica €\${myPendingAmount.toFixed(2)}
                                     </button>
                                 </div>
-                            `;
-                        } else if (hasPendingItems) {
-                            // Animatore vede bottone per segnare come consegnato
-                            return `
+                            \`;
+                        }
+
+                        // Owner: conferma ricezione o modifica importo
+                        if (hasPendingOwnerConfirmation && isOwnerOrAdmin) {
+                            buttons += \`
+                                <div style="margin-top:10px; display:flex; gap:6px;">
+                                    <button class="btn btn-success btn-sm" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="flex:1;">
+                                        ✅ Conferma €\${currentData.totalPendingOwnerConfirmation.toFixed(2)}
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openAgencyFeeDetail()" style="flex:0 0 auto;">
+                                        ✏️
+                                    </button>
+                                </div>
+                            \`;
+                        } else if (hasPendingItems && !isOwnerOrAdmin) {
+                            // Animatore: segna come consegnato
+                            buttons += \`
                                 <div style="margin-top:10px;">
                                     <button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
                                         📤 Segna Tutto come Consegnato
                                     </button>
                                 </div>
-                            `;
+                            \`;
                         }
-                        return '';
+
+                        return buttons;
                     })()}
                 </div>
 
@@ -17756,66 +17800,127 @@ function openAgencyFeeDetail() {
     // Ordina per data (più recenti prima)
     data.items.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    const myEmail = state.profile?.email?.toLowerCase();
+
     const content = `
         <div style="margin-bottom:16px;">
-            <!-- Riepilogo con 3 stati -->
-            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:16px;">
+            <!-- Riepilogo con 4 stati -->
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; margin-bottom:16px;">
                 <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.7rem; color:var(--text-secondary);">Totale</div>
-                    <div style="font-size:1rem; font-weight:700; color:#f97316;">€${data.totalFees.toFixed(2)}</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">Totale Mese</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#f97316;">€${data.totalFees.toFixed(2)}</div>
                 </div>
                 <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.7rem; color:var(--text-secondary);">📋 Pendente</div>
-                    <div style="font-size:1rem; font-weight:700; color:#6366f1;">€${data.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0).toFixed(2)}</div>
-                </div>
-                <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.7rem; color:var(--text-secondary);">⏳ In Attesa</div>
-                    <div style="font-size:1rem; font-weight:700; color:#f59e0b;">€${data.totalPendingConfirmation.toFixed(2)}</div>
-                </div>
-                <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.7rem; color:var(--text-secondary);">✅ Confermato</div>
-                    <div style="font-size:1rem; font-weight:700; color:#10b981;">€${data.totalDelivered.toFixed(2)}</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">✅ Confermati</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#10b981;">€${data.totalDelivered.toFixed(2)}</div>
                 </div>
             </div>
 
-            <!-- Lista incassi -->
-            <div style="max-height:300px; overflow-y:auto;">
+            <!-- Lista incassi con azioni -->
+            <div style="max-height:350px; overflow-y:auto;">
                 ${data.items.length === 0 ? `
                     <div style="text-align:center; padding:20px; color:var(--text-secondary);">
                         Nessun compenso registrato questo mese
                     </div>
-                ` : data.items.map(item => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color); cursor:pointer;"
-                         onclick="openEventFromAgencyFee('${item.eventId}')">
-                        <div>
-                            <div style="font-weight:500;">${item.eventName}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary);">
-                                ${formatDateShort(item.date)} • Incasso €${item.incomeTotal?.toFixed(2) || '0.00'}
-                                ${item.authorName ? ` • ${item.authorName}` : ''}
+                ` : data.items.map(item => {
+                    // Determina badge stato
+                    let statusBadge = '';
+                    if (item.status === 'confirmed') {
+                        statusBadge = '<span style="color:#10b981;">✅ Confermato</span>';
+                    } else if (item.status === 'pending_animator_confirmation') {
+                        statusBadge = '<span style="color:#ec4899;">🔄 Attesa animatore</span>';
+                    } else if (item.status === 'pending_owner_confirmation') {
+                        statusBadge = '<span style="color:#f59e0b;">⏳ Attesa owner</span>';
+                    } else {
+                        statusBadge = '<span style="color:#6366f1;">📋 Da consegnare</span>';
+                    }
+
+                    // Mostra modifica se owner ha modificato
+                    let modifiedNote = '';
+                    if (item.modifiedByOwner && item.originalAgencyFee !== item.agencyFee) {
+                        modifiedNote = \`<div style="font-size:0.65rem; color:#ec4899;">Modificato: €\${item.originalAgencyFee.toFixed(2)} → €\${item.agencyFee.toFixed(2)}</div>\`;
+                    }
+
+                    // Bottone modifica per owner (solo su pending_owner_confirmation)
+                    let editBtn = '';
+                    if (isOwnerOrAdmin && item.status === 'pending_owner_confirmation') {
+                        editBtn = \`<button class="btn btn-xs" onclick="event.stopPropagation(); openEditAgencyFee('\${item.id}', \${item.agencyFee})" style="padding:2px 6px; font-size:0.65rem; margin-top:4px;">✏️ Modifica</button>\`;
+                    }
+
+                    // Bottone accetta per animatore (solo su pending_animator_confirmation e se sono l'autore)
+                    let acceptBtn = '';
+                    if (item.status === 'pending_animator_confirmation' && item.authorEmail?.toLowerCase() === myEmail) {
+                        acceptBtn = \`
+                            <div style="display:flex; gap:4px; margin-top:4px;">
+                                <button class="btn btn-xs btn-success" onclick="event.stopPropagation(); acceptSingleModification('\${item.id}')" style="padding:2px 6px; font-size:0.65rem;">✅ Accetta</button>
+                                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); rejectSingleModification('\${item.id}')" style="padding:2px 6px; font-size:0.65rem;">❌ Rifiuta</button>
                             </div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-weight:600; color:#f97316;">€${item.agencyFee.toFixed(2)}</div>
-                            <div style="font-size:0.7rem;">
-                                ${item.status === 'confirmed' ? '<span style="color:#10b981;">✅ Confermato</span>' :
-                                  item.status === 'pending_confirmation' ? '<span style="color:#f59e0b;">⏳ In attesa conferma</span>' :
-                                  '<span style="color:#6366f1;">📋 Da consegnare</span>'}
+                        \`;
+                    }
+
+                    return \`
+                        <div style="padding:10px; border-bottom:1px solid var(--border-color);">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;"
+                                 onclick="openEventFromAgencyFee('\${item.eventId}')">
+                                <div>
+                                    <div style="font-weight:500;">\${item.eventName}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-secondary);">
+                                        \${formatDateShort(item.date)} • Incasso €\${item.incomeTotal?.toFixed(2) || '0.00'}
+                                        \${item.authorName ? \` • \${item.authorName}\` : ''}
+                                    </div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-weight:600; color:#f97316;">€\${item.agencyFee.toFixed(2)}</div>
+                                    <div style="font-size:0.7rem;">\${statusBadge}</div>
+                                    \${modifiedNote}
+                                </div>
                             </div>
+                            \${editBtn}
+                            \${acceptBtn}
                         </div>
-                    </div>
-                `).join('')}
+                    \`;
+                }).join('')}
             </div>
 
             ${(() => {
-                const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
                 const pendingAmount = data.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0);
                 const hasPendingItems = pendingAmount > 0;
-                const hasPendingConfirmation = data.totalPendingConfirmation > 0;
+                const hasPendingOwnerConfirmation = data.totalPendingOwnerConfirmation > 0;
+                const hasPendingAnimatorConfirmation = data.totalPendingAnimatorConfirmation > 0;
 
                 let html = '';
 
+                // Animatore: accetta modifiche owner
+                const myPendingAnimatorItems = data.items.filter(i =>
+                    i.status === 'pending_animator_confirmation' &&
+                    i.authorEmail?.toLowerCase() === myEmail
+                );
+                if (myPendingAnimatorItems.length > 0) {
+                    const myPendingAmount = myPendingAnimatorItems.reduce((s,i) => s + i.agencyFee, 0);
+                    html += \`
+                        <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #ec489920, #f4347820); border-radius:8px; border:1px solid #ec489940;">
+                            <div style="font-size:0.85rem; margin-bottom:8px;">
+                                <strong>🔄 Modifiche da Accettare</strong>
+                            </div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
+                                Il proprietario ha modificato €\${myPendingAmount.toFixed(2)} di compensi.<br>
+                                Accetta o rifiuta le modifiche.
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-success" onclick="acceptOwnerModification('${currentMonth}')" style="flex:1;">
+                                    ✅ Accetta Tutto
+                                </button>
+                                <button class="btn btn-danger" onclick="rejectOwnerModification('${currentMonth}')" style="flex:1;">
+                                    ❌ Rifiuta Tutto
+                                </button>
+                            </div>
+                        </div>
+                    \`;
+                }
+
                 // Bottone per animatore: segna come consegnato
-                if (hasPendingItems) {
+                if (hasPendingItems && !isOwnerOrAdmin) {
                     html += \`
                         <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #6366f120, #818cf820); border-radius:8px; border:1px solid #6366f140;">
                             <div style="font-size:0.85rem; margin-bottom:8px;">
@@ -17833,15 +17938,15 @@ function openAgencyFeeDetail() {
                 }
 
                 // Bottone per owner: conferma ricezione
-                if (hasPendingConfirmation && isOwnerOrAdmin) {
+                if (hasPendingOwnerConfirmation && isOwnerOrAdmin) {
                     html += \`
                         <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #f59e0b20, #f9731620); border-radius:8px; border:1px solid #f59e0b40;">
                             <div style="font-size:0.85rem; margin-bottom:8px;">
                                 <strong>⏳ Compensi in Attesa di Conferma</strong>
                             </div>
                             <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
-                                €\${data.totalPendingConfirmation.toFixed(2)} segnati come consegnati dagli animatori.<br>
-                                Conferma quando hai ricevuto il pagamento.
+                                €\${data.totalPendingOwnerConfirmation.toFixed(2)} segnati come consegnati dagli animatori.<br>
+                                Puoi modificare gli importi cliccando ✏️ o confermare direttamente.
                             </div>
                             <button class="btn btn-success" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="width:100%;">
                                 ✅ Conferma Ricezione
@@ -18064,6 +18169,293 @@ async function confirmAgencyFeesReceived(yearMonth) {
     renderAgencyFeeWallet();
 
     showToast(`${count} compensi confermati come ricevuti!`, 'success');
+}
+
+// Apre modal per modificare importo compenso (solo owner)
+function openEditAgencyFee(commentId, currentAmount) {
+    const content = `
+        <div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary);">Nuovo Importo Compenso €</label>
+                <input type="number" step="0.01" id="editAgencyFeeAmount" value="${currentAmount}" class="form-input" style="font-size:1.1rem; font-weight:600;">
+            </div>
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+                L'animatore dovrà accettare la modifica.
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-secondary" onclick="closeModal('dynamicModal')" style="flex:1;">Annulla</button>
+                <button class="btn btn-primary" onclick="saveAgencyFeeModification('${commentId}')" style="flex:1;">💾 Salva</button>
+            </div>
+        </div>
+    `;
+    showModal('✏️ Modifica Compenso', content);
+}
+
+// Salva modifica importo compenso (owner)
+async function saveAgencyFeeModification(commentId) {
+    const newAmount = parseFloat(document.getElementById('editAgencyFeeAmount')?.value) || 0;
+    const sb = getSupabase();
+    const now = new Date().toISOString();
+    const myEmail = state.profile?.email;
+    const myName = state.profile?.name || 'Proprietario';
+
+    // Trova il commento
+    let foundComment = null;
+    let foundEventId = null;
+    for (const eventId of Object.keys(state.eventComments || {})) {
+        const comments = state.eventComments[eventId] || [];
+        const c = comments.find(c => c.id === commentId);
+        if (c) {
+            foundComment = c;
+            foundEventId = eventId;
+            break;
+        }
+    }
+
+    if (!foundComment) {
+        showToast('Compenso non trovato', 'error');
+        return;
+    }
+
+    // Salva importo originale se non già salvato
+    if (!foundComment.originalAgencyFee) {
+        foundComment.originalAgencyFee = foundComment.agencyFee;
+    }
+
+    // Aggiorna
+    foundComment.agencyFee = newAmount;
+    foundComment.agencyFeeModifiedByOwner = true;
+    foundComment.agencyFeeModifiedAt = now;
+    foundComment.agencyFeeModifiedBy = myEmail;
+    foundComment.agencyFeeAnimatorAccepted = false;
+
+    // Aggiorna su Supabase
+    if (sb && currentUser) {
+        try {
+            await sb
+                .from('event_comments')
+                .update({
+                    agency_fee: newAmount,
+                    original_agency_fee: foundComment.originalAgencyFee,
+                    agency_fee_modified_by_owner: true,
+                    agency_fee_modified_at: now,
+                    agency_fee_modified_by: myEmail,
+                    agency_fee_animator_accepted: false
+                })
+                .eq('id', commentId);
+
+            // Notifica animatore
+            const animatorEmail = foundComment.authorEmail;
+            if (animatorEmail) {
+                const { data: animator } = await sb
+                    .from('profiles')
+                    .select('id')
+                    .eq('email', animatorEmail)
+                    .single();
+
+                if (animator) {
+                    await sb
+                        .from('notifications')
+                        .insert({
+                            user_id: animator.id,
+                            organization_id: state.organizationId,
+                            type: 'system',
+                            title: '🔄 Compenso Modificato',
+                            body: `${myName} ha modificato un compenso da €${foundComment.originalAgencyFee.toFixed(2)} a €${newAmount.toFixed(2)}. Accetta o rifiuta la modifica.`,
+                            entity_type: 'agency_fee_modified',
+                            link: '/finance',
+                            actor_id: currentUser.id
+                        });
+                }
+            }
+        } catch (err) {
+            console.error('Errore modifica compenso:', err);
+        }
+    }
+
+    saveStateAndSync();
+    closeModal('dynamicModal');
+    openAgencyFeeDetail(); // Riapri il dettaglio aggiornato
+
+    showToast('Compenso modificato! In attesa di conferma animatore.', 'success');
+}
+
+// Animatore accetta modifica owner (singolo item)
+async function acceptSingleModification(commentId) {
+    const sb = getSupabase();
+    const now = new Date().toISOString();
+    const myEmail = state.profile?.email;
+
+    // Trova il commento
+    for (const eventId of Object.keys(state.eventComments || {})) {
+        const comments = state.eventComments[eventId] || [];
+        const c = comments.find(c => c.id === commentId);
+        if (c) {
+            c.agencyFeeAnimatorAccepted = true;
+            c.agencyFeeAnimatorAcceptedAt = now;
+            c.agencyFeeConfirmed = true;
+            c.agencyFeeConfirmedAt = now;
+
+            if (sb && currentUser) {
+                try {
+                    await sb
+                        .from('event_comments')
+                        .update({
+                            agency_fee_animator_accepted: true,
+                            agency_fee_animator_accepted_at: now,
+                            agency_fee_confirmed: true,
+                            agency_fee_confirmed_at: now
+                        })
+                        .eq('id', commentId);
+                } catch (err) {
+                    console.error('Errore accettazione:', err);
+                }
+            }
+            break;
+        }
+    }
+
+    saveStateAndSync();
+    openAgencyFeeDetail();
+    showToast('Modifica accettata!', 'success');
+}
+
+// Animatore rifiuta modifica owner (singolo item) - torna all'importo originale
+async function rejectSingleModification(commentId) {
+    const sb = getSupabase();
+    const now = new Date().toISOString();
+
+    // Trova il commento
+    for (const eventId of Object.keys(state.eventComments || {})) {
+        const comments = state.eventComments[eventId] || [];
+        const c = comments.find(c => c.id === commentId);
+        if (c) {
+            // Ripristina importo originale
+            if (c.originalAgencyFee) {
+                c.agencyFee = c.originalAgencyFee;
+            }
+            c.agencyFeeModifiedByOwner = false;
+            c.agencyFeeAnimatorAccepted = false;
+            // Torna a pending_owner_confirmation
+            c.agencyFeeDelivered = true;
+
+            if (sb && currentUser) {
+                try {
+                    await sb
+                        .from('event_comments')
+                        .update({
+                            agency_fee: c.agencyFee,
+                            agency_fee_modified_by_owner: false,
+                            agency_fee_animator_accepted: false
+                        })
+                        .eq('id', commentId);
+                } catch (err) {
+                    console.error('Errore rifiuto:', err);
+                }
+            }
+            break;
+        }
+    }
+
+    saveStateAndSync();
+    openAgencyFeeDetail();
+    showToast('Modifica rifiutata. Importo ripristinato.', 'warning');
+}
+
+// Animatore accetta tutte le modifiche owner
+async function acceptOwnerModification(yearMonth) {
+    const sb = getSupabase();
+    const now = new Date().toISOString();
+    const myEmail = state.profile?.email?.toLowerCase();
+    let count = 0;
+
+    for (const eventId of Object.keys(state.eventComments || {})) {
+        const comments = state.eventComments[eventId] || [];
+        for (const c of comments) {
+            if (c.type === 'income' && c.agencyFeeModifiedByOwner && !c.agencyFeeAnimatorAccepted) {
+                // Solo i miei
+                if (c.authorEmail?.toLowerCase() !== myEmail) continue;
+
+                const commentDate = c.createdAt?.split('T')[0];
+                if (yearMonth && commentDate?.slice(0, 7) !== yearMonth) continue;
+
+                c.agencyFeeAnimatorAccepted = true;
+                c.agencyFeeAnimatorAcceptedAt = now;
+                c.agencyFeeConfirmed = true;
+                c.agencyFeeConfirmedAt = now;
+                count++;
+
+                if (sb && currentUser && c.id) {
+                    try {
+                        await sb
+                            .from('event_comments')
+                            .update({
+                                agency_fee_animator_accepted: true,
+                                agency_fee_animator_accepted_at: now,
+                                agency_fee_confirmed: true,
+                                agency_fee_confirmed_at: now
+                            })
+                            .eq('id', c.id);
+                    } catch (err) {
+                        console.error('Errore accettazione:', err);
+                    }
+                }
+            }
+        }
+    }
+
+    saveStateAndSync();
+    closeModal('dynamicModal');
+    renderAgencyFeeWallet();
+    showToast(`${count} modifiche accettate!`, 'success');
+}
+
+// Animatore rifiuta tutte le modifiche owner
+async function rejectOwnerModification(yearMonth) {
+    const sb = getSupabase();
+    const myEmail = state.profile?.email?.toLowerCase();
+    let count = 0;
+
+    for (const eventId of Object.keys(state.eventComments || {})) {
+        const comments = state.eventComments[eventId] || [];
+        for (const c of comments) {
+            if (c.type === 'income' && c.agencyFeeModifiedByOwner && !c.agencyFeeAnimatorAccepted) {
+                // Solo i miei
+                if (c.authorEmail?.toLowerCase() !== myEmail) continue;
+
+                const commentDate = c.createdAt?.split('T')[0];
+                if (yearMonth && commentDate?.slice(0, 7) !== yearMonth) continue;
+
+                // Ripristina importo originale
+                if (c.originalAgencyFee) {
+                    c.agencyFee = c.originalAgencyFee;
+                }
+                c.agencyFeeModifiedByOwner = false;
+                c.agencyFeeAnimatorAccepted = false;
+                count++;
+
+                if (sb && currentUser && c.id) {
+                    try {
+                        await sb
+                            .from('event_comments')
+                            .update({
+                                agency_fee: c.agencyFee,
+                                agency_fee_modified_by_owner: false,
+                                agency_fee_animator_accepted: false
+                            })
+                            .eq('id', c.id);
+                    } catch (err) {
+                        console.error('Errore rifiuto:', err);
+                    }
+                }
+            }
+        }
+    }
+
+    saveStateAndSync();
+    closeModal('dynamicModal');
+    renderAgencyFeeWallet();
+    showToast(`${count} modifiche rifiutate. Importi ripristinati.`, 'warning');
 }
 
 // Renderizza dashboard eventi nella pagina Finance
