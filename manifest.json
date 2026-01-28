@@ -1,0 +1,60 @@
+{
+    "name": "Mago Max S.A.V.E.R.S. PRO",
+    "short_name": "SAVERS",
+    "description": "Complete Productivity & Finance Suite - Track tasks, habits, finances, and practice the S.A.V.E.R.S. routine",
+    "start_url": "./savers-pro-v4-final.html",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#6366f1",
+    "orientation": "portrait-primary",
+    "scope": "./",
+    "lang": "it-IT",
+    "categories": ["productivity", "finance", "lifestyle"],
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%236366f1' width='100' height='100' rx='20'/><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='50'>🎩</text></svg>",
+            "sizes": "192x192",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%236366f1' width='100' height='100' rx='20'/><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='50'>🎩</text></svg>",
+            "sizes": "512x512",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "screenshots": [],
+    "shortcuts": [
+        {
+            "name": "Nuova Spesa",
+            "short_name": "Spesa",
+            "description": "Registra una nuova spesa",
+            "url": "./savers-pro-v4-final.html?action=expense",
+            "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='60'>💸</text></svg>", "sizes": "96x96" }]
+        },
+        {
+            "name": "Nuovo Task",
+            "short_name": "Task",
+            "description": "Crea un nuovo task",
+            "url": "./savers-pro-v4-final.html?action=task",
+            "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='60'>✅</text></svg>", "sizes": "96x96" }]
+        },
+        {
+            "name": "Pomodoro",
+            "short_name": "Focus",
+            "description": "Avvia sessione di focus",
+            "url": "./savers-pro-v4-final.html?page=focus",
+            "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='60'>🍅</text></svg>", "sizes": "96x96" }]
+        },
+        {
+            "name": "S.A.V.E.R.S.",
+            "short_name": "Routine",
+            "description": "Avvia routine mattutina",
+            "url": "./savers-pro-v4-final.html?page=routine",
+            "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='60'>🌅</text></svg>", "sizes": "96x96" }]
+        }
+    ],
+    "related_applications": [],
+    "prefer_related_applications": false
+}
