@@ -1,5 +1,5 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-28 - FASE 2 in corso (Habits completato)
+> Aggiornato: 2026-01-28 - FASE 2 in corso (Habits + Tasks completati)
 
 ## STATO PROGETTO
 
@@ -8,11 +8,12 @@
 - [x] FASE 1: Auth Migration a Supabase (Google OAuth funzionante)
 - [x] RLS Policies fixate (profiles + organizations)
 - [x] Habits + Habit Logs migrati a Supabase
+- [x] Tasks migrati a Supabase
 
 ### In Corso - FASE 2: Migrazione Dati Personali
 Migrazione dei moduli da `state.habits/tasks/...` (attualmente sincronizzati con Google Sheets) a Supabase:
 - [x] Habits + Habit Logs (COMPLETATO 2026-01-28)
-- [ ] Tasks (personali)
+- [x] Tasks (COMPLETATO 2026-01-28)
 - [ ] Transactions
 - [ ] Books
 - [ ] Goals
@@ -53,7 +54,7 @@ Migrazione dei moduli da `state.habits/tasks/...` (attualmente sincronizzati con
 
 ```
 /Users/ilmagicartista/Downloads/savers pro per la vendita/
-├── index.html              # App principale (~26k righe)
+├── index.html              # App principale (~27k righe)
 ├── css/styles.css          # CSS estratto (8910 righe)
 ├── manifest.json           # PWA config
 ├── sw.js                   # Service Worker
@@ -68,9 +69,9 @@ Migrazione dei moduli da `state.habits/tasks/...` (attualmente sincronizzati con
 
 ---
 
-## HABITS - IMPLEMENTAZIONE COMPLETATA
+## MODULI MIGRATI
 
-### Funzioni CRUD aggiunte (riga ~4375 in index.html)
+### HABITS (riga ~4375 in index.html)
 ```javascript
 loadHabitsFromDB()         // Carica habits da Supabase
 saveHabitToDB(habit)       // Salva nuova habit
@@ -78,57 +79,59 @@ updateHabitInDB(id, data)  // Aggiorna habit esistente
 deleteHabitFromDB(id)      // Soft delete (is_active=false)
 toggleHabitInDB(id, date)  // Log completamento
 updateHabitStreakInDB(id)  // Calcola streak server-side
+loadHabitsFromSupabase()   // Chiamata da ensureUserProfile()
+migrateLocalHabitsToSupabase() // Migrazione one-time
 ```
 
-### Funzioni di supporto
+### TASKS (riga ~4808 in index.html)
 ```javascript
-loadHabitsFromSupabase()        // Chiamata da ensureUserProfile()
-migrateLocalHabitsToSupabase()  // Migrazione one-time
+loadTasksFromDB()          // Carica tasks da Supabase
+saveTaskToDB(task)         // Salva nuovo task
+updateTaskInDB(id, data)   // Aggiorna task esistente
+deleteTaskFromDB(id)       // Hard delete
+toggleTaskInDB(id, done)   // Toggle completamento
+loadTasksFromSupabase()    // Chiamata da ensureUserProfile()
+migrateLocalTasksToSupabase() // Migrazione one-time
 ```
 
-### Modifiche effettuate
-- `saveHabit()` ora salva su Supabase (async, con fallback locale)
-- `toggleHabit()` ora sincronizza su habit_logs (async, non bloccante)
-- `ensureUserProfile()` ora chiama `loadHabitsFromSupabase()` dopo il login
-
-### Struttura dati state.habits (aggiornata)
+### Pattern di caricamento dati (ensureUserProfile)
 ```javascript
-{
-    id: 'uuid-from-supabase',      // UUID Supabase
-    name: 'Meditare',
-    icon: '🧘',
-    frequency: 'daily',
-    department: 'personal',
-    streak: 5,
-    bestStreak: 10,
-    totalCompletions: 45,
-    completedDates: ['2026-01-25', '2026-01-26'],
-    scheduledTime: '07:00',
-    createdAt: '2026-01-20T10:00:00Z',
-    _supabaseId: 'uuid'            // Riferimento DB
-}
+// Load data from Supabase (habits and tasks in parallel)
+await Promise.all([
+    loadHabitsFromSupabase(),
+    loadTasksFromSupabase()
+]);
 ```
 
 ---
 
-## PROSSIMO MODULO: TASKS
+## PROSSIMO MODULO: TRANSACTIONS
 
-### Analisi preliminare richiesta
-Per migrare Tasks seguire lo stesso pattern di Habits:
+### Schema DB (sql/01-base-schema.sql righe 217-243)
+```sql
+CREATE TABLE transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES profiles(id),
+    type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+    amount DECIMAL(12,2) NOT NULL,
+    currency TEXT DEFAULT 'EUR',
+    description TEXT,
+    category TEXT NOT NULL,
+    date DATE NOT NULL,
+    department TEXT DEFAULT 'personal',
+    is_recurring BOOLEAN DEFAULT FALSE,
+    recurrence_rule TEXT,
+    receipt_url TEXT,
+    payment_method TEXT,
+    payment_status TEXT DEFAULT 'completed',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
-1. **Funzioni CRUD da creare:**
-   - `loadTasksFromDB()`
-   - `saveTaskToDB(task)`
-   - `updateTaskInDB(id, updates)`
-   - `deleteTaskFromDB(id)`
-   - `toggleTaskCompletionInDB(id, completed)`
-
-2. **Funzioni esistenti da modificare:**
-   - Cerca `saveTask()` o funzioni simili
-   - Cerca `toggleTask()` o `completeTask()`
-   - Trova dove vengono renderizzati i tasks
-
-3. **Schema DB:** Tabella `tasks` già esiste (vedi sql/01-base-schema.sql righe 178-215)
+### Funzioni da cercare
+- Cerca `saveTransaction()` o simili
+- Cerca dove vengono renderizzate le transazioni (Finance page)
+- Cerca `state.transactions`
 
 ---
 
@@ -140,11 +143,11 @@ Quando apri una nuova chat, usa questo prompt:
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
 e continua con la FASE 2: Migrazione Dati Personali.
 
-Prossimo modulo: TASKS
-1. Analizza le funzioni esistenti per tasks in index.html
-2. Aggiungi le funzioni CRUD Supabase (loadTasksFromDB, saveTaskToDB, etc.)
+Prossimo modulo: TRANSACTIONS
+1. Cerca le funzioni esistenti per transactions in index.html
+2. Aggiungi le funzioni CRUD Supabase
 3. Modifica le funzioni esistenti per salvare su Supabase
-4. Aggiungi caricamento tasks in loadHabitsFromSupabase() o simile
+4. Aggiungi caricamento in ensureUserProfile()
 5. Testa e fai deploy
 
 Usa il metodo Ralph Loop - aggiorna CLAUDE_CONTEXT.md al termine.
@@ -156,7 +159,7 @@ Usa il metodo Ralph Loop - aggiorna CLAUDE_CONTEXT.md al termine.
 
 - [x] FASE0_COMPLETE
 - [x] FASE1_AUTH_COMPLETE
-- [ ] FASE2_PERSONAL_DATA_COMPLETE (Habits done, Tasks next)
+- [ ] FASE2_PERSONAL_DATA_COMPLETE (Habits done, Tasks done, Transactions next)
 - [ ] FASE3_TEAM_COMPLETE
 - [ ] FASE4_COURSES_COMPLETE
 - [ ] FASE5_SHOP_COMPLETE
