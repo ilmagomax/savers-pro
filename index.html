@@ -4330,28 +4330,20 @@ function setupSupabaseAuth() {
         return;
     }
 
-    let profileLoadingInProgress = false;
-    let dataLoadedSuccessfully = false;
+    let authHandled = false;
 
     sb.auth.onAuthStateChange(async (event, session) => {
-        console.log('🔐 Auth event:', event);
+        console.log('🔐 Auth event:', event, 'authHandled:', authHandled);
 
-        // Handle INITIAL_SESSION only (more reliable than SIGNED_IN which fires too early)
-        // Also handle SIGNED_IN as fallback if INITIAL_SESSION never comes
+        // Handle sign in events
         if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
-            // Skip if data already loaded successfully
-            if (dataLoadedSuccessfully) {
-                console.log('⏭️ Data already loaded, skipping');
+            // Skip if already handled (single execution guarantee)
+            if (authHandled) {
+                console.log('⏭️ Auth already handled, skipping');
                 return;
             }
+            authHandled = true; // Set immediately to prevent any race conditions
 
-            // Skip if another load is in progress
-            if (profileLoadingInProgress) {
-                console.log('⏭️ Profile loading in progress, skipping');
-                return;
-            }
-
-            profileLoadingInProgress = true;
             currentUser = session.user;
             isLoggedIn = true;
             isGoogleSignedIn = true;
@@ -4365,12 +4357,14 @@ function setupSupabaseAuth() {
                 localStorage.setItem('google_refresh_token', session.provider_refresh_token);
             }
 
-            // Carica o crea profilo
-            const success = await ensureUserProfile();
-            profileLoadingInProgress = false;
+            // Carica o crea profilo (con retry automatico se timeout)
+            let success = await ensureUserProfile();
 
-            if (success) {
-                dataLoadedSuccessfully = true;
+            // Se fallisce (timeout), riprova una volta dopo 2 secondi
+            if (!success) {
+                console.log('🔄 Retrying profile load in 2s...');
+                await new Promise(r => setTimeout(r, 2000));
+                success = await ensureUserProfile();
             }
 
             // Mostra app
