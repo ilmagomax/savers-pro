@@ -3948,9 +3948,12 @@
                             <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeIncome" onclick="setEventCommentType('income')">💵 Incasso</button>
                             <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeExpense" onclick="setEventCommentType('expense')">💸 Spesa</button>
                         </div>
-                        <!-- Campo importo (visibile solo per tipo finanziario) -->
+                        <!-- Campi importo e note (visibili solo per tipo finanziario) -->
                         <div id="eventCommentAmountWrapper" style="display:none; margin-bottom:8px;">
-                            <input type="number" step="0.01" min="0" class="form-input" id="eventCommentAmount" placeholder="Importo €" style="font-size:0.9rem;">
+                            <div style="display:flex; gap:8px; margin-bottom:6px;">
+                                <input type="number" step="0.01" min="0" class="form-input" id="eventCommentAmount" placeholder="Importo €" style="font-size:0.9rem; flex:1;">
+                            </div>
+                            <input type="text" class="form-input" id="eventCommentNotes" placeholder="Note (opzionale)" style="font-size:0.85rem;">
                         </div>
                         <div style="display:flex; gap:8px;">
                             <input type="text" class="comment-input" id="eventCommentInput" placeholder="Scrivi... @ per menzionare" oninput="checkEventMentionAutocomplete(this)" onkeydown="handleEventMentionKeydown(event)" onfocus="scrollInputIntoView(this)" style="flex:1;">
@@ -17683,6 +17686,8 @@ function showEventFinanceDetail(eventId) {
     // Raccogli tutte le voci finanziarie per questo evento
     const items = [];
     let eventName = 'Evento';
+    let eventDate = null;
+    let isGoogleEvent = false;
 
     // 1. Transazioni legate all'evento
     const eventTx = (state.transactions || []).filter(t => t.eventId === eventId);
@@ -17708,7 +17713,7 @@ function showEventFinanceDetail(eventId) {
             id: c.id,
             type: c.type,
             amount: Math.abs(c.amount),
-            description: c.text || (c.type === 'income' ? 'Incasso' : 'Spesa'),
+            description: c.text || c.notes || (c.type === 'income' ? 'Incasso' : 'Spesa'),
             date: c.createdAt?.split('T')[0],
             authorName: c.authorName,
             walletId: null,
@@ -17716,12 +17721,19 @@ function showEventFinanceDetail(eventId) {
         });
     });
 
-    // Cerca nome evento nel calendario
-    if (eventName === 'Evento') {
-        const calEvent = state.calendarEvents?.find(e => e.id === eventId || e.iCalUID === eventId);
-        if (calEvent) eventName = calEvent.summary || 'Evento';
-        const localEvent = state.events?.find(e => e.id === eventId);
-        if (localEvent) eventName = localEvent.title || 'Evento';
+    // Cerca evento nel calendario per nome e data
+    const calEvent = state.calendarEvents?.find(e => e.id === eventId || e.iCalUID === eventId);
+    if (calEvent) {
+        eventName = calEvent.summary || 'Evento';
+        eventDate = calEvent.start?.dateTime?.split('T')[0] || calEvent.start?.date;
+        isGoogleEvent = true;
+    }
+
+    const localEvent = state.events?.find(e => e.id === eventId);
+    if (localEvent) {
+        eventName = localEvent.title || 'Evento';
+        eventDate = localEvent.date;
+        isGoogleEvent = false;
     }
 
     if (items.length === 0) {
@@ -17736,6 +17748,19 @@ function showEventFinanceDetail(eventId) {
 
     const content = `
         <div style="margin-bottom:16px;">
+            <!-- Link all'evento -->
+            <div style="background:var(--bg-tertiary); padding:10px 12px; border-radius:8px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">📅 Evento</div>
+                    <div style="font-weight:500;">${eventName}</div>
+                    ${eventDate ? `<div style="font-size:0.75rem; color:var(--text-secondary);">${formatDate(eventDate)}</div>` : ''}
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="closeModal('dynamicModal');openEventDetail('${eventId}', ${isGoogleEvent});" style="white-space:nowrap;">
+                    📍 Vai all'evento
+                </button>
+            </div>
+
+            <!-- Riepilogo finanzario -->
             <div style="display:flex; gap:12px; margin-bottom:16px;">
                 <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
                     <div style="font-size:0.75rem; color:var(--text-secondary);">Guadagno</div>
@@ -17750,7 +17775,9 @@ function showEventFinanceDetail(eventId) {
                     <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
                 </div>
             </div>
-            <div style="max-height:300px; overflow-y:auto;">
+
+            <!-- Lista voci -->
+            <div style="max-height:250px; overflow-y:auto;">
                 ${items.map(item => `
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color);">
                         <div>
@@ -28894,7 +28921,9 @@ async function addEventComment() {
 
     // Per commenti finanziari, verifica importo
     const amountInput = document.getElementById('eventCommentAmount');
+    const notesInput = document.getElementById('eventCommentNotes');
     let amount = null;
+    let notes = notesInput?.value?.trim() || '';
 
     if (currentEventCommentType !== 'normal') {
         amount = parseFloat(amountInput?.value || 0);
@@ -28921,9 +28950,16 @@ async function addEventComment() {
     const authorName = currentUser?.nickname || state.profile?.name || state.profile?.stageName || 'Tu';
     const authorEmail = state.profile?.email || state.cloudUser?.email || null;
 
+    // Costruisci il testo del commento includendo le note se presenti
+    let commentText = text || (currentEventCommentType === 'income' ? 'Incasso' : 'Spesa');
+    if (notes && currentEventCommentType !== 'normal') {
+        commentText = notes; // Usa le note come testo principale per commenti finanziari
+    }
+
     const comment = {
         id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        text: text || (currentEventCommentType === 'income' ? 'Incasso' : 'Spesa'),
+        text: commentText,
+        notes: notes, // Campo separato per le note
         authorId: state.profile?.googleId || currentUser?.username || 'local',
         authorName: authorName,
         authorEmail: authorEmail,
@@ -28963,6 +28999,7 @@ async function addEventComment() {
     // Reset form
     input.value = '';
     if (amountInput) amountInput.value = '';
+    if (notesInput) notesInput.value = '';
     setEventCommentType('normal'); // Torna al tipo normale
 
     renderEventComments(eventCommentId);
