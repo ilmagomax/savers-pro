@@ -4671,14 +4671,28 @@ async function ensureUserProfile() {
     try {
         console.log('📡 Starting profile query for:', currentUser.id);
 
-        // Query diretta senza Promise.race per evitare race conditions
-        const { data: profile, error } = await sb
+        // Query con timeout di 10 secondi
+        const queryPromise = sb
             .from('profiles')
             .select('*')
             .eq('id', currentUser.id)
             .single();
 
-        console.log('📡 Profile query completed:', { hasProfile: !!profile, error: error?.message });
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Query timeout after 10s')), 10000)
+        );
+
+        let profile, error;
+        try {
+            const result = await Promise.race([queryPromise, timeoutPromise]);
+            profile = result.data;
+            error = result.error;
+            console.log('📡 Profile query completed:', { hasProfile: !!profile, error: error?.message });
+        } catch (timeoutErr) {
+            console.error('❌ Profile query timeout:', timeoutErr.message);
+            // Continua comunque con i dati locali
+            return;
+        }
 
         // Carica organization separatamente
         let organization = null;
