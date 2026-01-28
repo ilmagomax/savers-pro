@@ -122,6 +122,27 @@ Usa il metodo Ralph Loop.
 
 ---
 
+## EXTRA: DA COMPLETARE IN FUTURO
+
+### Google Tasks Sync (Disabilitato temporaneamente)
+- **Problema**: Richiede lo scope `https://www.googleapis.com/auth/tasks` che non è incluso nell'OAuth Supabase
+- **Soluzione**:
+  1. Vai su **Supabase Dashboard** → **Authentication** → **Providers** → **Google**
+  2. Aggiungi questi scopes:
+     ```
+     https://www.googleapis.com/auth/tasks
+     https://www.googleapis.com/auth/tasks.readonly
+     ```
+  3. Gli utenti dovranno ri-autenticarsi per ottenere i nuovi permessi
+- **File**: `loadGoogleTaskLists()` e `syncTaskToGoogle()` sono commentati in index.html
+
+### Backend Legacy (Disabilitato)
+- **getUserNotifications** - Vecchio backend Google Sheets, sarà migrato a Supabase
+- **getUserTeams** - Vecchio backend Google Sheets, sarà migrato a Supabase
+- **File**: Funzioni disabilitate in index.html, da riabilitare dopo migrazione a Supabase
+
+---
+
 ## PROMISE TAGS
 
 - [x] FASE0_COMPLETE
@@ -131,3 +152,4 @@ Usa il metodo Ralph Loop.
 - [ ] FASE4_COURSES_COMPLETE
 - [ ] FASE5_SHOP_COMPLETE
 - [ ] FASE6_PUSH_COMPLETE
+- [ ] EXTRA_GOOGLE_TASKS_SYNC
