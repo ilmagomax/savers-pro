@@ -4651,16 +4651,23 @@ async function updateHabitStreakInDB(habitId) {
 
 // Ensure user profile exists in database
 async function ensureUserProfile() {
+    console.log('🔄 ensureUserProfile() called');
     const sb = getSupabase();
-    if (!currentUser || !sb) return;
+    if (!currentUser || !sb) {
+        console.log('⚠️ ensureUserProfile skipped - no currentUser or sb', { currentUser: !!currentUser, sb: !!sb });
+        return;
+    }
 
     try {
+        console.log('📡 Loading profile for user:', currentUser.id);
         // Cerca profilo esistente (usa organization_id per la relazione)
         let { data: profile, error } = await sb
             .from('profiles')
             .select('*, organization:organizations!profiles_organization_id_fkey(*)')
             .eq('id', currentUser.id)
             .single();
+
+        console.log('📡 Profile query result:', { profile: !!profile, error });
 
         if (error && error.code === 'PGRST116') {
             // Nuovo utente - crea organizzazione e profilo
