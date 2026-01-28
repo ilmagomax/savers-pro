@@ -17312,16 +17312,54 @@ async function saveEditedWallet(walletId) {
 
 // Calcola riepilogo finanziario dai commenti evento
 function renderEventFinanceSummaryFromComments(commentId) {
+    // Verifica se l'utente è owner/admin
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+
     // Trova sezione commenti e aggiungi riepilogo se ci sono commenti finanziari
-    const comments = state.eventComments[commentId] || [];
+    let comments = state.eventComments[commentId] || [];
+
+    // Se siamo owner/admin, cerca anche commenti salvati con altri ID dello stesso evento
+    if (isOwnerOrAdmin && currentEventId) {
+        const event = state.calendarEvents?.find(e => e.id === currentEventId) ||
+                      state.events?.find(e => e.id === currentEventId);
+
+        if (event) {
+            const possibleIds = new Set([commentId]);
+            if (event.id) possibleIds.add(event.id);
+            if (event.iCalUID) possibleIds.add(event.iCalUID);
+            if (event.recurringEventId) possibleIds.add(event.recurringEventId);
+
+            const summary = (event.summary || event.title || 'untitled').trim().toLowerCase();
+            const startTime = event.start?.dateTime || event.start?.date || event.date || '';
+            const organizer = event.organizer?.email || event.creator?.email || '';
+            if (summary && startTime) {
+                const hashId = 'evt_' + simpleHash(`${summary}|${startTime}|${organizer}`);
+                possibleIds.add(hashId);
+            }
+
+            const mergedComments = [];
+            const seenCommentIds = new Set();
+            possibleIds.forEach(pid => {
+                const cmts = state.eventComments[pid] || [];
+                cmts.forEach(c => {
+                    if (!seenCommentIds.has(c.id)) {
+                        seenCommentIds.add(c.id);
+                        mergedComments.push(c);
+                    }
+                });
+            });
+
+            if (mergedComments.length > comments.length) {
+                comments = mergedComments;
+            }
+        }
+    }
+
     const financialComments = comments.filter(c =>
         c.type && c.type !== 'normal' && c.amount && canSeeFinancialComment(c)
     );
 
     if (financialComments.length === 0) return;
-
-    // Verifica se l'utente è owner/admin
-    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
 
     // Calcoli base - Ritiro Saldo (incassoTotale dai commenti income)
     const ritiroSaldo = financialComments
@@ -30108,7 +30146,52 @@ function renderEventComments(eventId) {
     const container = document.getElementById('eventCommentsList');
     if (!container) return;
 
-    const allComments = state.eventComments[eventId] || [];
+    // Cerca commenti su più ID possibili per unificare eventi condivisi
+    let allComments = state.eventComments[eventId] || [];
+
+    // Se siamo owner/admin, cerca anche commenti salvati con altri ID dello stesso evento
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    if (isOwnerOrAdmin && currentEventId) {
+        // Trova l'evento corrente
+        const event = state.calendarEvents?.find(e => e.id === currentEventId) ||
+                      state.events?.find(e => e.id === currentEventId);
+
+        if (event) {
+            // Genera tutti gli ID possibili per questo evento
+            const possibleIds = new Set([eventId]);
+            if (event.id) possibleIds.add(event.id);
+            if (event.iCalUID) possibleIds.add(event.iCalUID);
+            if (event.recurringEventId) possibleIds.add(event.recurringEventId);
+
+            // Genera anche hash universale
+            const summary = (event.summary || event.title || 'untitled').trim().toLowerCase();
+            const startTime = event.start?.dateTime || event.start?.date || event.date || '';
+            const organizer = event.organizer?.email || event.creator?.email || '';
+            if (summary && startTime) {
+                const hashId = 'evt_' + simpleHash(`${summary}|${startTime}|${organizer}`);
+                possibleIds.add(hashId);
+            }
+
+            // Raccogli tutti i commenti da tutti gli ID possibili
+            const mergedComments = [];
+            const seenCommentIds = new Set();
+
+            possibleIds.forEach(pid => {
+                const comments = state.eventComments[pid] || [];
+                comments.forEach(c => {
+                    if (!seenCommentIds.has(c.id)) {
+                        seenCommentIds.add(c.id);
+                        mergedComments.push(c);
+                    }
+                });
+            });
+
+            if (mergedComments.length > allComments.length) {
+                console.log('🔄 Unificati commenti da più ID:', possibleIds, '→', mergedComments.length, 'commenti');
+                allComments = mergedComments;
+            }
+        }
+    }
 
     // Filtra commenti: mostra tutti i normali, filtra finanziari per visibilità
     const comments = allComments.filter(comment => {
