@@ -4716,8 +4716,11 @@ async function ensureUserProfile() {
 
         console.log('✅ Profile loaded:', profile?.full_name);
 
-        // Load habits from Supabase
-        await loadHabitsFromSupabase();
+        // Load data from Supabase (habits and tasks in parallel)
+        await Promise.all([
+            loadHabitsFromSupabase(),
+            loadTasksFromSupabase()
+        ]);
 
     } catch (err) {
         console.error('Profile error:', err);
@@ -4802,6 +4805,272 @@ async function migrateLocalHabitsToSupabase() {
     if (migrated > 0) {
         console.log(`✅ Migrated ${migrated} habits to Supabase`);
         showToast(`${migrated} abitudini migrate al cloud`, 'success');
+    }
+}
+
+// ============================================
+// TASKS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+// Load all tasks from Supabase
+async function loadTasksFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+
+    try {
+        const { data, error } = await sb
+            .from('tasks')
+            .select('*')
+            .eq('created_by', currentUser.id)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error loading tasks:', error);
+            return [];
+        }
+
+        // Convert DB format to state format
+        return data.map(t => ({
+            id: t.id,
+            title: t.title,
+            description: t.description || '',
+            due: t.due_date || '',
+            dueTime: t.due_time || '',
+            priority: t.priority || 'medium',
+            category: t.category || 'work',
+            quadrant: t.quadrant || 2,
+            estimate: t.estimated_minutes || 30,
+            actualTime: t.actual_minutes || 0,
+            department: t.department || 'work',
+            status: t.status || 'todo',
+            completed: t.status === 'done',
+            completedDate: t.completed_at ? t.completed_at.split('T')[0] : null,
+            labels: t.labels || [],
+            isRecurring: t.is_recurring || false,
+            recurrence: t.recurrence_rule || 'none',
+            createdAt: t.created_at,
+            updatedAt: t.updated_at,
+            projectId: t.project_id,
+            parentTaskId: t.parent_task_id,
+            googleEventId: t.google_event_id,
+            _supabaseId: t.id
+        }));
+    } catch (err) {
+        console.error('Error in loadTasksFromDB:', err);
+        return [];
+    }
+}
+
+// Save new task to Supabase
+async function saveTaskToDB(task) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+
+    try {
+        const { data, error } = await sb
+            .from('tasks')
+            .insert({
+                created_by: currentUser.id,
+                title: task.title,
+                description: task.description || null,
+                status: task.status || 'todo',
+                priority: task.priority || 'medium',
+                quadrant: parseInt(task.quadrant) || 2,
+                due_date: task.due || null,
+                estimated_minutes: task.estimate || 30,
+                actual_minutes: task.actualTime || 0,
+                category: task.category || null,
+                labels: task.labels || [],
+                department: task.department || 'work',
+                is_recurring: task.isRecurring || false,
+                recurrence_rule: task.recurrence || null
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error saving task to DB:', error);
+            return null;
+        }
+
+        console.log('✅ Task saved to Supabase:', data.id);
+        return data;
+    } catch (err) {
+        console.error('Error in saveTaskToDB:', err);
+        return null;
+    }
+}
+
+// Update task in Supabase
+async function updateTaskInDB(taskId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+
+    try {
+        const dbUpdates = {};
+        if (updates.title !== undefined) dbUpdates.title = updates.title;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+        if (updates.status !== undefined) dbUpdates.status = updates.status;
+        if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
+        if (updates.quadrant !== undefined) dbUpdates.quadrant = parseInt(updates.quadrant);
+        if (updates.due !== undefined) dbUpdates.due_date = updates.due || null;
+        if (updates.estimate !== undefined) dbUpdates.estimated_minutes = updates.estimate;
+        if (updates.actualTime !== undefined) dbUpdates.actual_minutes = updates.actualTime;
+        if (updates.category !== undefined) dbUpdates.category = updates.category;
+        if (updates.labels !== undefined) dbUpdates.labels = updates.labels;
+        if (updates.department !== undefined) dbUpdates.department = updates.department;
+        if (updates.completed !== undefined) {
+            dbUpdates.status = updates.completed ? 'done' : 'todo';
+            dbUpdates.completed_at = updates.completed ? new Date().toISOString() : null;
+        }
+
+        const { error } = await sb
+            .from('tasks')
+            .update(dbUpdates)
+            .eq('id', taskId)
+            .eq('created_by', currentUser.id);
+
+        if (error) {
+            console.error('Error updating task:', error);
+            return false;
+        }
+
+        return true;
+    } catch (err) {
+        console.error('Error in updateTaskInDB:', err);
+        return false;
+    }
+}
+
+// Delete task from Supabase
+async function deleteTaskFromDB(taskId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+
+    try {
+        const { error } = await sb
+            .from('tasks')
+            .delete()
+            .eq('id', taskId)
+            .eq('created_by', currentUser.id);
+
+        if (error) {
+            console.error('Error deleting task:', error);
+            return false;
+        }
+
+        console.log('✅ Task deleted from Supabase:', taskId);
+        return true;
+    } catch (err) {
+        console.error('Error in deleteTaskFromDB:', err);
+        return false;
+    }
+}
+
+// Toggle task completion in Supabase
+async function toggleTaskInDB(taskId, completed) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+
+    try {
+        const { error } = await sb
+            .from('tasks')
+            .update({
+                status: completed ? 'done' : 'todo',
+                completed_at: completed ? new Date().toISOString() : null
+            })
+            .eq('id', taskId)
+            .eq('created_by', currentUser.id);
+
+        if (error) {
+            console.error('Error toggling task:', error);
+            return false;
+        }
+
+        console.log('✅ Task toggled in Supabase:', taskId, completed ? 'completed' : 'reopened');
+        return true;
+    } catch (err) {
+        console.error('Error in toggleTaskInDB:', err);
+        return false;
+    }
+}
+
+// Load tasks from Supabase on login
+async function loadTasksFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+
+    try {
+        console.log('📥 Loading tasks from Supabase...');
+        const dbTasks = await loadTasksFromDB();
+
+        if (dbTasks && dbTasks.length > 0) {
+            // Replace local tasks with DB tasks
+            state.tasks = dbTasks;
+            console.log(`✅ Loaded ${dbTasks.length} tasks from Supabase`);
+
+            // Render updated tasks
+            if (typeof renderTasksPage === 'function') {
+                renderTasksPage();
+            }
+            if (typeof renderHomePage === 'function') {
+                renderHomePage();
+            }
+        } else {
+            console.log('ℹ️ No tasks found in Supabase, checking for local tasks to migrate');
+
+            // If we have local tasks, migrate them to Supabase
+            if (state.tasks && state.tasks.length > 0) {
+                console.log('🔄 Migrating local tasks to Supabase...');
+                await migrateLocalTasksToSupabase();
+            }
+        }
+    } catch (err) {
+        console.error('Error loading tasks from Supabase:', err);
+    }
+}
+
+// Migrate existing local tasks to Supabase (one-time migration)
+async function migrateLocalTasksToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.tasks) return;
+
+    let migrated = 0;
+    for (const localTask of state.tasks) {
+        // Skip if already has Supabase ID (UUID format)
+        if (localTask._supabaseId || (localTask.id && localTask.id.length === 36 && localTask.id.includes('-'))) continue;
+
+        try {
+            const dbTask = await saveTaskToDB({
+                title: localTask.title,
+                description: localTask.description,
+                status: localTask.completed ? 'done' : (localTask.status || 'todo'),
+                priority: localTask.priority,
+                quadrant: localTask.quadrant,
+                due: localTask.due,
+                estimate: localTask.estimate,
+                actualTime: localTask.actualTime,
+                category: localTask.category,
+                labels: localTask.labels,
+                department: localTask.department,
+                isRecurring: localTask.isRecurring,
+                recurrence: localTask.recurrence
+            });
+
+            if (dbTask) {
+                // Update local task with Supabase ID
+                localTask._supabaseId = dbTask.id;
+                localTask.id = dbTask.id;
+                migrated++;
+            }
+        } catch (err) {
+            console.warn('Error migrating task:', err);
+        }
+    }
+
+    if (migrated > 0) {
+        console.log(`✅ Migrated ${migrated} tasks to Supabase`);
+        showToast(`${migrated} task migrati al cloud`, 'success');
     }
 }
 
@@ -14548,7 +14817,7 @@ function resetTaskForm() {
     if (modalTitle) modalTitle.textContent = '✅ Nuovo Task';
 }
 
-function saveTask() {
+async function saveTask() {
     const title = document.getElementById('taskTitle')?.value?.trim();
     if (!title) {
         showToast('Inserisci un titolo', 'error');
@@ -14592,12 +14861,18 @@ function saveTask() {
         actualTime: 0
     };
 
+    // Close modal and reset form immediately for better UX
+    closeModal('addTaskModal');
+    resetTaskFormFields();
+
     // Inizializza state.tasks se non esiste
     if (!state.tasks) {
         state.tasks = [];
     }
 
     let isEdit = false;
+    const sb = getSupabase();
+
     if (editingTaskId) {
         // Modifica task esistente
         const task = state.tasks.find(t => t.id === editingTaskId);
@@ -14606,30 +14881,76 @@ function saveTask() {
             Object.assign(task, taskData);
             task.updatedAt = new Date().toISOString();
             isEdit = true;
+
+            // Update in Supabase
+            if (sb && currentUser && task._supabaseId) {
+                updateTaskInDB(task._supabaseId, taskData)
+                    .catch(err => console.warn('Error updating task in DB:', err));
+            } else {
+                saveStateAndSync();
+            }
         }
         editingTaskId = null;
     } else {
-        // Crea nuovo task
-        const task = {
-            ...taskData,
-            id: 'task_' + Date.now(),
-            completed: false,
-            status: 'todo',
-            createdAt: new Date().toISOString(),
-            lastRecurrence: null
-        };
-        state.tasks.push(task);
+        // Crea nuovo task - try Supabase first
+        if (sb && currentUser) {
+            const dbTask = await saveTaskToDB(taskData);
+            if (dbTask) {
+                const task = {
+                    ...taskData,
+                    id: dbTask.id,
+                    completed: false,
+                    status: 'todo',
+                    createdAt: dbTask.created_at,
+                    lastRecurrence: null,
+                    _supabaseId: dbTask.id
+                };
+                state.tasks.push(task);
+            } else {
+                // Fallback to local
+                const task = {
+                    ...taskData,
+                    id: 'task_' + Date.now(),
+                    completed: false,
+                    status: 'todo',
+                    createdAt: new Date().toISOString(),
+                    lastRecurrence: null
+                };
+                state.tasks.push(task);
+                saveStateAndSync();
+            }
+        } else {
+            // No Supabase - use local
+            const task = {
+                ...taskData,
+                id: 'task_' + Date.now(),
+                completed: false,
+                status: 'todo',
+                createdAt: new Date().toISOString(),
+                lastRecurrence: null
+            };
+            state.tasks.push(task);
+            saveStateAndSync();
+        }
         addXP(5);
     }
 
-    // Salva lo stato E sincronizza con il cloud
-    saveStateAndSync();
-
     // Mostra messaggio di conferma
     showToast(isEdit ? 'Task modificato!' : 'Task creato! +5 XP', 'success');
-    console.log('✅ Task salvato e sincronizzato:', taskData.title);
+    console.log('✅ Task salvato:', taskData.title);
 
-    // Reset form (sempre eseguito)
+    // Re-render pagine
+    try {
+        renderTasksPage();
+        renderHomePage();
+        updateDepartmentStats();
+    } catch (e) {
+        console.warn('Render warning:', e);
+    }
+}
+
+// Helper function to reset task form fields
+function resetTaskFormFields() {
     try {
         document.getElementById('taskTitle').value = '';
         document.getElementById('taskDesc').value = '';
@@ -14653,18 +14974,6 @@ function saveTask() {
         if (modalTitle) modalTitle.textContent = '✅ Nuovo Task';
     } catch (e) {
         console.warn('Reset form warning:', e);
-    }
-
-    // Chiudi modal SEMPRE
-    closeModal('addTaskModal');
-
-    // Re-render pagine
-    try {
-        renderTasksPage();
-        renderHomePage();
-        updateDepartmentStats();
-    } catch (e) {
-        console.warn('Render warning:', e);
     }
 }
 
@@ -14888,7 +15197,7 @@ function renderTimeComparison(task) {
     `;
 }
 
-function toggleTask(id) {
+async function toggleTask(id) {
     const task = state.tasks.find(t => t.id === id);
     if (!task) return;
 
@@ -14908,6 +15217,37 @@ function toggleTask(id) {
     // Determina se il task sparirà dalla vista corrente
     const willDisappear = (willBeCompleted && currentTaskFilter !== 'done') ||
                           (!willBeCompleted && currentTaskFilter === 'done');
+
+    // Helper to perform the actual toggle
+    const performToggle = () => {
+        task.completed = willBeCompleted;
+        task.completedDate = willBeCompleted ? state.today.date : null;
+        task.status = willBeCompleted ? 'done' : 'todo';
+
+        // SYNC: Se è collegato a un progetto, aggiorna anche il task del progetto
+        syncPersonalTaskToProject(task);
+
+        if (willBeCompleted) {
+            state.stats.tasksCompleted++;
+            addXP(10);
+            showToast('Task completato! +10 XP', 'success');
+        } else {
+            showToast('Task riaperto', 'info');
+        }
+
+        // Sync to Supabase (async, non-blocking)
+        const sb = getSupabase();
+        if (sb && currentUser && task._supabaseId) {
+            toggleTaskInDB(task._supabaseId, willBeCompleted)
+                .catch(err => console.warn('Error syncing task to Supabase:', err));
+        } else {
+            saveStateAndSync();
+        }
+
+        renderTasksPage();
+        renderHomePage();
+        checkBadges();
+    };
 
     // Animazione di uscita
     if (taskElement && willDisappear) {
@@ -14929,61 +15269,33 @@ function toggleTask(id) {
         taskElement.style.opacity = '0';
 
         // Dopo l'animazione, aggiorna lo stato
-        setTimeout(() => {
-            task.completed = willBeCompleted;
-            task.completedDate = willBeCompleted ? state.today.date : null;
-            task.status = willBeCompleted ? 'done' : 'todo';
-
-            // SYNC: Se è collegato a un progetto, aggiorna anche il task del progetto
-            syncPersonalTaskToProject(task);
-
-            if (willBeCompleted) {
-                state.stats.tasksCompleted++;
-                addXP(10);
-                showToast('Task completato! +10 XP', 'success');
-            } else {
-                showToast('Task riaperto', 'info');
-            }
-
-            saveStateAndSync();
-            renderTasksPage();
-            renderHomePage();
-            checkBadges();
-        }, 400);
+        setTimeout(performToggle, 400);
         return;
     }
 
     // Nessuna animazione necessaria
-    task.completed = willBeCompleted;
-    task.completedDate = willBeCompleted ? state.today.date : null;
-    task.status = willBeCompleted ? 'done' : 'todo';
-
-    // SYNC: Se è collegato a un progetto, aggiorna anche il task del progetto
-    syncPersonalTaskToProject(task);
-
-    if (willBeCompleted) {
-        state.stats.tasksCompleted++;
-        addXP(10);
-        showToast('Task completato! +10 XP', 'success');
-    } else {
-        showToast('Task riaperto', 'info');
-    }
-
-    saveStateAndSync();
-    renderTasksPage();
-    renderHomePage();
-    checkBadges();
+    performToggle();
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
     const task = state.tasks.find(t => t.id === id);
     if (!task) return;
 
     // Salva per undo
     const taskBackup = { ...task };
 
+    // Remove from local state
     state.tasks = state.tasks.filter(t => t.id !== id);
-    saveStateAndSync();
+
+    // Delete from Supabase
+    const sb = getSupabase();
+    if (sb && currentUser && task._supabaseId) {
+        deleteTaskFromDB(task._supabaseId)
+            .catch(err => console.warn('Error deleting task from Supabase:', err));
+    } else {
+        saveStateAndSync();
+    }
+
     renderTasksPage();
     renderHomePage();
 
