@@ -9550,20 +9550,20 @@ async function loadCalendarEvents(forceRange = null) {
 }
 
 // Load Google Task Lists
+// NOTA: Temporaneamente disabilitato - richiede scope aggiuntivo in Supabase OAuth
+// TODO: Aggiungere https://www.googleapis.com/auth/tasks agli scopes in Supabase Dashboard
 async function loadGoogleTaskLists() {
-    if (!isGoogleSignedIn) return;
-
-    try {
-        const response = await gapi.client.tasks.tasklists.list();
-        googleTaskLists = response.result.items || [];
-
-        // Save in state
-        state.googleTaskLists = googleTaskLists;
-        saveStateAndSync();
-
-    } catch (error) {
-        console.error('Error loading task lists:', error);
-    }
+    // Disabilitato temporaneamente per evitare errori 403
+    // if (!isGoogleSignedIn) return;
+    // try {
+    //     const response = await gapi.client.tasks.tasklists.list();
+    //     googleTaskLists = response.result.items || [];
+    //     state.googleTaskLists = googleTaskLists;
+    //     saveStateAndSync();
+    // } catch (error) {
+    //     console.error('Error loading task lists:', error);
+    // }
+    return;
 }
 
 // Sync task to Google Tasks
@@ -19282,39 +19282,11 @@ async function createTeam() {
 }
 
 // Carica i team dell'utente dal backend Google Sheets
+// NOTA: Disabilitato temporaneamente - il vecchio backend usa token diverso da Supabase
+// TODO: Migrare teams a Supabase in FASE 3
 async function loadUserTeams() {
-    try {
-        const response = await apiCall('getUserTeams', {});
-        console.log('getUserTeams response:', response);
-
-        if (response.success) {
-            // Aggiorna lo stato locale con i team dal backend
-            state.teams = response.teams.map(t => ({
-                id: t.teamId,
-                name: t.name,
-                description: t.description,
-                inviteCode: t.inviteCode,
-                ownerUsername: t.ownerUsername,
-                ownerEmail: t.ownerUsername,
-                members: t.members,
-                pendingRequests: t.pendingRequests || [],
-                myRole: t.myRole,
-                createdAt: t.createdAt,
-                isPrivate: t.isPrivate !== false // default true
-            }));
-
-            console.log('state.teams aggiornato:', state.teams);
-
-            // Aggiorna badge inbox con richieste pendenti team
-            updateInboxBadge();
-
-            renderMyTeams();
-        } else {
-            console.warn('getUserTeams failed:', response.message);
-        }
-    } catch (error) {
-        console.error('Errore loadUserTeams:', error);
-    }
+    // Disabilitato - usa Supabase per teams
+    return;
 }
 
 // Apri gestione team - ora apre un modal vero
@@ -27306,36 +27278,11 @@ function playNotificationSound() {
 }
 
 // Carica notifiche dal backend
+// NOTA: Disabilitato temporaneamente - il vecchio backend usa token diverso da Supabase
+// TODO: Migrare notifiche a Supabase in FASE 3
 async function loadUserNotifications() {
-    try {
-        const response = await apiCall('getUserNotifications', {});
-        console.log('getUserNotifications response:', response);
-
-        if (response.success) {
-            const newNotifications = response.notifications || [];
-            const previousCount = state.backendNotifications?.length || 0;
-
-            state.backendNotifications = newNotifications;
-            console.log('Notifiche caricate:', state.backendNotifications.length);
-
-            // Se ci sono nuove notifiche, riproduci suono
-            if (newNotifications.length > previousCount && previousCount > 0) {
-                playNotificationSound();
-                // Vibra su mobile se disponibile
-                if (navigator.vibrate) {
-                    navigator.vibrate([100, 50, 100]);
-                }
-            }
-
-            updateInboxBadge();
-            // Aggiorna sezione inviti in attesa nel calendario
-            if (typeof renderPendingInvites === 'function') renderPendingInvites();
-        } else {
-            console.warn('getUserNotifications failed:', response.message);
-        }
-    } catch (error) {
-        console.error('Errore loadUserNotifications:', error);
-    }
+    // Disabilitato - usa Supabase per notifiche
+    return;
 }
 
 // Rispondi a un invito evento dal backend
