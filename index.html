@@ -610,6 +610,9 @@
             <!-- Wallets / Conti -->
             <div id="walletsContainer"></div>
 
+            <!-- Events Dashboard - Feste & Eventi -->
+            <div id="eventsDashboardContainer"></div>
+
             <!-- Weekly Trend Chart -->
             <div class="card">
                 <div class="card-header">
@@ -5181,7 +5184,8 @@ async function loadTransactionsFromDB() {
             id: t.id, type: t.type, amount: parseFloat(t.amount), description: t.description,
             category: t.category, date: t.date, method: t.payment_method,
             department: t.department, recurring: t.is_recurring, createdAt: t.created_at,
-            walletId: t.wallet_id, _supabaseId: t.id
+            walletId: t.wallet_id, eventId: t.event_id, eventName: t.event_name,
+            isEventTransaction: t.is_event_transaction, _supabaseId: t.id
         }));
     } catch (err) { console.error('Error in loadTransactionsFromDB:', err); return []; }
 }
@@ -5195,7 +5199,10 @@ async function saveTransactionToDB(tx) {
             description: tx.description || null, category: tx.category,
             date: tx.date, department: tx.department || 'personal',
             payment_method: tx.method || null, is_recurring: tx.recurring || false,
-            wallet_id: tx.walletId || null
+            wallet_id: tx.walletId || null,
+            event_id: tx.eventId || null,
+            event_name: tx.eventName || null,
+            is_event_transaction: tx.isEventTransaction || false
         }).select().single();
         if (error) { console.error('Error saving transaction:', error); return null; }
         return data;
@@ -16470,7 +16477,8 @@ function renderFinancePage() {
         state.wallets = [];
     }
 
-    renderWallets(); // Nuovo: renderizza wallet
+    renderWallets(); // Renderizza wallet
+    renderEventsDashboard(); // Dashboard feste/eventi
     renderFinanceSummary();
     renderDailyBudget();
     renderMoneyGoals();
@@ -16875,6 +16883,368 @@ async function saveEditedWallet(walletId) {
     closeModal('dynamicModal');
     renderFinancePage();
     showToast('Conto aggiornato!', 'success');
+}
+
+// ============================================
+// EVENT FINANCE - Guadagni/Spese per Evento
+// ============================================
+
+// Mostra riepilogo finanze evento nel dettaglio
+function renderEventFinanceSummary(eventId, isGoogle) {
+    const container = document.getElementById('eventFinanceSummary');
+    if (!container) return;
+
+    // Trova transazioni legate a questo evento
+    const eventTx = (state.transactions || []).filter(t => t.eventId === eventId);
+
+    if (eventTx.length === 0) {
+        container.innerHTML = `
+            <div class="text-muted" style="font-size:0.85rem; text-align:center; padding:8px;">
+                Nessuna transazione registrata per questo evento
+            </div>
+        `;
+        return;
+    }
+
+    const income = eventTx.filter(t => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const expenses = eventTx.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const profit = income - expenses;
+
+    container.innerHTML = `
+        <div style="display:flex; gap:12px; margin-bottom:12px;">
+            <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary);">Guadagno</div>
+                <div style="font-weight:600; color:#10b981;">+${formatCurrency(income)}</div>
+            </div>
+            <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary);">Spese</div>
+                <div style="font-weight:600; color:#ef4444;">-${formatCurrency(expenses)}</div>
+            </div>
+            <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:0.75rem; color:var(--text-secondary);">Profitto</div>
+                <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
+            </div>
+        </div>
+        <div style="max-height:150px; overflow-y:auto;">
+            ${eventTx.map(t => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color);">
+                    <div>
+                        <div style="font-size:0.85rem;">${t.description || (t.type === 'income' ? 'Guadagno' : 'Spesa')}</div>
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">${formatDate(t.date)}</div>
+                    </div>
+                    <div style="font-weight:600; color:${t.type === 'income' ? '#10b981' : '#ef4444'};">
+                        ${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Modal per aggiungere guadagno/spesa evento
+function openEventFinanceModal(eventId, isGoogle) {
+    // Ottieni info evento
+    let event;
+    if (isGoogle) {
+        event = state.calendarEvents?.find(e => e.id === eventId);
+    } else {
+        event = state.events?.find(e => e.id === eventId);
+    }
+
+    const eventName = event?.summary || event?.title || 'Evento';
+    const eventDate = isGoogle
+        ? (event?.start?.dateTime || event?.start?.date)?.split('T')[0]
+        : event?.date;
+
+    const wallets = state.wallets || [];
+    const walletOptions = wallets.map(w => `<option value="${w.id}">${w.icon} ${w.name}</option>`).join('');
+
+    const content = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+            <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; text-align:center;">
+                <div style="font-size:0.8rem; color:var(--text-secondary);">Evento</div>
+                <div style="font-weight:600;">${eventName}</div>
+                <div style="font-size:0.8rem; color:var(--text-secondary);">${formatDate(eventDate)}</div>
+            </div>
+
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Tipo *</label>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" id="eventTxTypeIncome" onclick="selectEventTxType('income')"
+                            class="btn btn-success" style="flex:1; opacity:0.5;">
+                        💰 Guadagno
+                    </button>
+                    <button type="button" id="eventTxTypeExpense" onclick="selectEventTxType('expense')"
+                            class="btn btn-danger" style="flex:1; opacity:0.5;">
+                        💸 Spesa
+                    </button>
+                </div>
+                <input type="hidden" id="eventTxType" value="">
+            </div>
+
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Importo (€) *</label>
+                <input type="number" id="eventTxAmount" placeholder="0.00" step="0.01" min="0"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:1.1rem;">
+            </div>
+
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Descrizione</label>
+                <input type="text" id="eventTxDesc" placeholder="Es: Cachet festa, Materiale consumabile..."
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Conto / Wallet</label>
+                <select id="eventTxWallet" class="wallet-select"
+                        style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+                    <option value="">Seleziona conto...</option>
+                    ${walletOptions}
+                </select>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+                <button onclick="saveEventTransaction('${eventId}', ${isGoogle}, '${eventDate}')" class="btn btn-primary" style="flex:1;">Salva</button>
+            </div>
+        </div>
+    `;
+
+    showModal(`💰 Aggiungi a "${eventName}"`, content);
+}
+
+function selectEventTxType(type) {
+    document.getElementById('eventTxType').value = type;
+    document.getElementById('eventTxTypeIncome').style.opacity = type === 'income' ? '1' : '0.5';
+    document.getElementById('eventTxTypeExpense').style.opacity = type === 'expense' ? '1' : '0.5';
+}
+
+async function saveEventTransaction(eventId, isGoogle, eventDate) {
+    const type = document.getElementById('eventTxType')?.value;
+    const amount = parseFloat(document.getElementById('eventTxAmount')?.value);
+    const description = document.getElementById('eventTxDesc')?.value?.trim();
+    const walletId = document.getElementById('eventTxWallet')?.value || null;
+
+    if (!type) {
+        showToast('Seleziona Guadagno o Spesa', 'error');
+        return;
+    }
+    if (!amount || amount <= 0) {
+        showToast('Inserisci un importo valido', 'error');
+        return;
+    }
+
+    // Ottieni nome evento
+    let event;
+    if (isGoogle) {
+        event = state.calendarEvents?.find(e => e.id === eventId);
+    } else {
+        event = state.events?.find(e => e.id === eventId);
+    }
+    const eventName = event?.summary || event?.title || 'Evento';
+
+    const txData = {
+        type: type,
+        amount: amount,
+        description: description || `${type === 'income' ? 'Guadagno' : 'Spesa'} - ${eventName}`,
+        category: type === 'income' ? 'freelance' : 'other',
+        date: eventDate || state.today.date,
+        method: 'transfer',
+        department: 'work',
+        walletId: walletId,
+        eventId: eventId,
+        eventName: eventName,
+        isEventTransaction: true
+    };
+
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbTx = await saveTransactionToDB(txData);
+        if (dbTx) {
+            state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+            // Aggiorna saldo wallet
+            if (walletId) {
+                await updateWalletBalance(walletId, amount, type === 'income');
+            }
+        } else {
+            state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+        }
+    } else {
+        state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+    }
+
+    closeModal('dynamicModal');
+
+    // Aggiorna vista evento
+    renderEventFinanceSummary(eventId, isGoogle);
+
+    // Aggiorna pagina finance se visibile
+    if (typeof renderFinancePage === 'function') {
+        renderFinancePage();
+    }
+
+    showToast(`${type === 'income' ? 'Guadagno' : 'Spesa'} registrato!`, 'success');
+    addXP(5);
+}
+
+// Renderizza dashboard eventi nella pagina Finance
+function renderEventsDashboard() {
+    const container = document.getElementById('eventsDashboardContainer');
+    if (!container) return;
+
+    // Trova tutte le transazioni legate a eventi
+    const eventTx = (state.transactions || []).filter(t => t.isEventTransaction || t.eventId);
+
+    if (eventTx.length === 0) {
+        container.innerHTML = `
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-title-icon">🎭</span> Feste & Eventi</div>
+                </div>
+                <div class="empty-state" style="padding:20px; text-align:center;">
+                    <div style="font-size:2rem; margin-bottom:8px;">🎉</div>
+                    <div class="text-muted">Nessuna festa registrata</div>
+                    <div class="text-muted text-xs mt-1">Aggiungi guadagni e spese dai tuoi eventi</div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // Raggruppa per evento
+    const eventGroups = {};
+    eventTx.forEach(t => {
+        const key = t.eventId || 'unknown';
+        if (!eventGroups[key]) {
+            eventGroups[key] = {
+                eventId: t.eventId,
+                eventName: t.eventName || 'Evento',
+                date: t.date,
+                transactions: [],
+                income: 0,
+                expenses: 0
+            };
+        }
+        eventGroups[key].transactions.push(t);
+        if (t.type === 'income') {
+            eventGroups[key].income += parseFloat(t.amount) || 0;
+        } else {
+            eventGroups[key].expenses += parseFloat(t.amount) || 0;
+        }
+    });
+
+    // Converti in array e ordina per data (più recenti prima)
+    const events = Object.values(eventGroups).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Calcola totali
+    const totalIncome = events.reduce((s, e) => s + e.income, 0);
+    const totalExpenses = events.reduce((s, e) => s + e.expenses, 0);
+    const totalProfit = totalIncome - totalExpenses;
+    const eventsCount = events.length;
+
+    container.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="card-title"><span class="card-title-icon">🎭</span> Feste & Eventi</div>
+                <span class="badge">${eventsCount} eventi</span>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <!-- Riepilogo Totali -->
+                <div style="display:flex; background:var(--bg-tertiary); padding:12px;">
+                    <div style="flex:1; text-align:center; border-right:1px solid var(--border-color);">
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">Guadagnato</div>
+                        <div style="font-weight:700; color:#10b981;">${formatCurrency(totalIncome)}</div>
+                    </div>
+                    <div style="flex:1; text-align:center; border-right:1px solid var(--border-color);">
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">Speso</div>
+                        <div style="font-weight:700; color:#ef4444;">${formatCurrency(totalExpenses)}</div>
+                    </div>
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">Profitto</div>
+                        <div style="font-weight:700; color:${totalProfit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(totalProfit)}</div>
+                    </div>
+                </div>
+
+                <!-- Lista Eventi -->
+                <div style="max-height:300px; overflow-y:auto;">
+                    ${events.map(e => {
+                        const profit = e.income - e.expenses;
+                        return `
+                            <div class="event-finance-item" onclick="showEventTransactions('${e.eventId}')"
+                                 style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--border-color); cursor:pointer; transition:background 0.2s;"
+                                 onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                                <div>
+                                    <div style="font-weight:600;">${e.eventName}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-secondary);">${formatDate(e.date)} • ${e.transactions.length} transazioni</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
+                                    <div style="font-size:0.7rem; color:var(--text-secondary);">
+                                        +${formatCurrency(e.income)} / -${formatCurrency(e.expenses)}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Mostra dettaglio transazioni per evento
+function showEventTransactions(eventId) {
+    const eventTx = (state.transactions || []).filter(t => t.eventId === eventId);
+    if (eventTx.length === 0) return;
+
+    const eventName = eventTx[0].eventName || 'Evento';
+    const income = eventTx.filter(t => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const expenses = eventTx.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const profit = income - expenses;
+
+    const content = `
+        <div style="margin-bottom:16px;">
+            <div style="display:flex; gap:12px; margin-bottom:16px;">
+                <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">Guadagno</div>
+                    <div style="font-weight:600; color:#10b981;">+${formatCurrency(income)}</div>
+                </div>
+                <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">Spese</div>
+                    <div style="font-weight:600; color:#ef4444;">-${formatCurrency(expenses)}</div>
+                </div>
+                <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">Profitto</div>
+                    <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
+                </div>
+            </div>
+            <div style="max-height:300px; overflow-y:auto;">
+                ${eventTx.map(t => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color);">
+                        <div>
+                            <div style="font-weight:500;">${t.description || (t.type === 'income' ? 'Guadagno' : 'Spesa')}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary);">
+                                ${formatDate(t.date)}
+                                ${t.walletId ? ' • ' + getWalletName(t.walletId) : ''}
+                            </div>
+                        </div>
+                        <div style="font-weight:600; color:${t.type === 'income' ? '#10b981' : '#ef4444'};">
+                            ${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="width:100%;">Chiudi</button>
+    `;
+
+    showModal(`🎭 ${eventName}`, content);
+}
+
+// Helper: ottieni nome wallet da ID
+function getWalletName(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    return wallet ? `${wallet.icon} ${wallet.name}` : '';
 }
 
 function renderFinanceSummary() {
@@ -27468,6 +27838,21 @@ function openEventDetail(eventId, isGoogle = false) {
         // Per eventi locali, l'utente corrente è sempre il proprietario
         isOwner = true;
     }
+
+    // Sezione Finanze Evento
+    const eventFinanceHtml = `
+        <div style="border-top:1px solid var(--border-color); margin-top:16px; padding-top:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <span style="font-weight:600;">💰 Finanze Evento</span>
+                <button class="btn btn-sm btn-primary" onclick="openEventFinanceModal('${eventId}', ${isGoogle})">+ Aggiungi</button>
+            </div>
+            <div id="eventFinanceSummary"></div>
+        </div>
+    `;
+    contentEl.innerHTML += eventFinanceHtml;
+
+    // Carica e mostra riepilogo finanze evento
+    renderEventFinanceSummary(eventId, isGoogle);
 
     if (isGoogle) {
         if (isOwner) {
