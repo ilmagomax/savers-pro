@@ -17732,36 +17732,25 @@ function renderAgencyFeeWallet() {
                         // Animatore: accetta modifiche owner
                         if (myPendingAnimatorItems.length > 0) {
                             const myPendingAmount = myPendingAnimatorItems.reduce((s,i) => s + i.agencyFee, 0);
-                            buttons += \`
-                                <div style="margin-top:10px;">
-                                    <button class="btn btn-success btn-sm" onclick="acceptOwnerModification('${currentMonth}')" style="width:100%;">
-                                        ✅ Accetta Modifica €\${myPendingAmount.toFixed(2)}
-                                    </button>
-                                </div>
-                            \`;
+                            buttons += '<div style="margin-top:10px;">' +
+                                '<button class="btn btn-success btn-sm" onclick="acceptOwnerModification(\'' + currentMonth + '\')" style="width:100%;">' +
+                                '✅ Accetta Modifica €' + myPendingAmount.toFixed(2) +
+                                '</button></div>';
                         }
 
                         // Owner: conferma ricezione o modifica importo
                         if (hasPendingOwnerConfirmation && isOwnerOrAdmin) {
-                            buttons += \`
-                                <div style="margin-top:10px; display:flex; gap:6px;">
-                                    <button class="btn btn-success btn-sm" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="flex:1;">
-                                        ✅ Conferma €\${currentData.totalPendingOwnerConfirmation.toFixed(2)}
-                                    </button>
-                                    <button class="btn btn-secondary btn-sm" onclick="openAgencyFeeDetail()" style="flex:0 0 auto;">
-                                        ✏️
-                                    </button>
-                                </div>
-                            \`;
+                            buttons += '<div style="margin-top:10px; display:flex; gap:6px;">' +
+                                '<button class="btn btn-success btn-sm" onclick="confirmAgencyFeesReceived(\'' + currentMonth + '\')" style="flex:1;">' +
+                                '✅ Conferma €' + currentData.totalPendingOwnerConfirmation.toFixed(2) +
+                                '</button>' +
+                                '<button class="btn btn-secondary btn-sm" onclick="openAgencyFeeDetail()" style="flex:0 0 auto;">✏️</button>' +
+                                '</div>';
                         } else if (hasPendingItems && !isOwnerOrAdmin) {
                             // Animatore: segna come consegnato
-                            buttons += \`
-                                <div style="margin-top:10px;">
-                                    <button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
-                                        📤 Segna Tutto come Consegnato
-                                    </button>
-                                </div>
-                            \`;
+                            buttons += '<div style="margin-top:10px;">' +
+                                '<button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">' +
+                                '📤 Segna Tutto come Consegnato</button></div>';
                         }
 
                         return buttons;
@@ -17840,56 +17829,45 @@ function openAgencyFeeDetail() {
                     // Mostra modifica se owner ha modificato
                     let modifiedNote = '';
                     if (item.modifiedByOwner && item.originalAgencyFee !== item.agencyFee) {
-                        modifiedNote = \`<div style="font-size:0.65rem; color:#ec4899;">Modificato: €\${item.originalAgencyFee.toFixed(2)} → €\${item.agencyFee.toFixed(2)}</div>\`;
+                        modifiedNote = '<div style="font-size:0.65rem; color:#ec4899;">Modificato: €' + item.originalAgencyFee.toFixed(2) + ' → €' + item.agencyFee.toFixed(2) + '</div>';
                     }
 
                     // Bottone modifica per owner (solo su pending_owner_confirmation)
                     let editBtn = '';
                     if (isOwnerOrAdmin && item.status === 'pending_owner_confirmation') {
-                        editBtn = \`<button class="btn btn-xs" onclick="event.stopPropagation(); openEditAgencyFee('\${item.id}', \${item.agencyFee})" style="padding:2px 6px; font-size:0.65rem; margin-top:4px;">✏️ Modifica</button>\`;
+                        editBtn = '<button class="btn btn-xs" onclick="event.stopPropagation(); openEditAgencyFee(\'' + item.id + '\', ' + item.agencyFee + ')" style="padding:2px 6px; font-size:0.65rem; margin-top:4px;">✏️ Modifica</button>';
                     }
 
                     // Bottone accetta per animatore (solo su pending_animator_confirmation e se sono l'autore)
                     let acceptBtn = '';
                     if (item.status === 'pending_animator_confirmation' && item.authorEmail?.toLowerCase() === myEmail) {
-                        acceptBtn = \`
-                            <div style="display:flex; gap:4px; margin-top:4px;">
-                                <button class="btn btn-xs btn-success" onclick="event.stopPropagation(); acceptSingleModification('\${item.id}')" style="padding:2px 6px; font-size:0.65rem;">✅ Accetta</button>
-                                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); rejectSingleModification('\${item.id}')" style="padding:2px 6px; font-size:0.65rem;">❌ Rifiuta</button>
-                            </div>
-                        \`;
+                        acceptBtn = '<div style="display:flex; gap:4px; margin-top:4px;">' +
+                            '<button class="btn btn-xs btn-success" onclick="event.stopPropagation(); acceptSingleModification(\'' + item.id + '\')" style="padding:2px 6px; font-size:0.65rem;">✅ Accetta</button>' +
+                            '<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); rejectSingleModification(\'' + item.id + '\')" style="padding:2px 6px; font-size:0.65rem;">❌ Rifiuta</button>' +
+                            '</div>';
                     }
 
                     // Bottone storico (se ci sono log)
                     let historyBtn = '';
                     if (item.log && item.log.length > 0) {
-                        historyBtn = \`<button class="btn btn-xs" onclick="event.stopPropagation(); showAgencyFeeHistory('\${item.id}')" style="padding:2px 6px; font-size:0.65rem; margin-left:4px;">📜 Storico</button>\`;
+                        historyBtn = '<button class="btn btn-xs" onclick="event.stopPropagation(); showAgencyFeeHistory(\'' + item.id + '\')" style="padding:2px 6px; font-size:0.65rem; margin-left:4px;">📜 Storico</button>';
                     }
 
-                    return \`
-                        <div style="padding:10px; border-bottom:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;"
-                                 onclick="openEventFromAgencyFee('\${item.eventId}')">
-                                <div>
-                                    <div style="font-weight:500;">\${item.eventName}</div>
-                                    <div style="font-size:0.75rem; color:var(--text-secondary);">
-                                        \${formatDateShort(item.date)} • Incasso €\${item.incomeTotal?.toFixed(2) || '0.00'}
-                                        \${item.authorName ? \` • \${item.authorName}\` : ''}
-                                    </div>
-                                </div>
-                                <div style="text-align:right;">
-                                    <div style="font-weight:600; color:#f97316;">€\${item.agencyFee.toFixed(2)}</div>
-                                    <div style="font-size:0.7rem;">\${statusBadge}</div>
-                                    \${modifiedNote}
-                                </div>
-                            </div>
-                            <div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">
-                                \${editBtn}
-                                \${historyBtn}
-                            </div>
-                            \${acceptBtn}
-                        </div>
-                    \`;
+                    return '<div style="padding:10px; border-bottom:1px solid var(--border-color);">' +
+                        '<div style="display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;" onclick="openEventFromAgencyFee(\'' + item.eventId + '\')">' +
+                        '<div><div style="font-weight:500;">' + item.eventName + '</div>' +
+                        '<div style="font-size:0.75rem; color:var(--text-secondary);">' +
+                        formatDateShort(item.date) + ' • Incasso €' + (item.incomeTotal?.toFixed(2) || '0.00') +
+                        (item.authorName ? ' • ' + item.authorName : '') +
+                        '</div></div>' +
+                        '<div style="text-align:right;">' +
+                        '<div style="font-weight:600; color:#f97316;">€' + item.agencyFee.toFixed(2) + '</div>' +
+                        '<div style="font-size:0.7rem;">' + statusBadge + '</div>' +
+                        modifiedNote +
+                        '</div></div>' +
+                        '<div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">' + editBtn + historyBtn + '</div>' +
+                        acceptBtn +
+                        '</div>';
                 }).join('')}
             </div>
 
@@ -17908,61 +17886,34 @@ function openAgencyFeeDetail() {
                 );
                 if (myPendingAnimatorItems.length > 0) {
                     const myPendingAmount = myPendingAnimatorItems.reduce((s,i) => s + i.agencyFee, 0);
-                    html += \`
-                        <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #ec489920, #f4347820); border-radius:8px; border:1px solid #ec489940;">
-                            <div style="font-size:0.85rem; margin-bottom:8px;">
-                                <strong>🔄 Modifiche da Accettare</strong>
-                            </div>
-                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
-                                Il proprietario ha modificato €\${myPendingAmount.toFixed(2)} di compensi.<br>
-                                Accetta o rifiuta le modifiche.
-                            </div>
-                            <div style="display:flex; gap:8px;">
-                                <button class="btn btn-success" onclick="acceptOwnerModification('${currentMonth}')" style="flex:1;">
-                                    ✅ Accetta Tutto
-                                </button>
-                                <button class="btn btn-danger" onclick="rejectOwnerModification('${currentMonth}')" style="flex:1;">
-                                    ❌ Rifiuta Tutto
-                                </button>
-                            </div>
-                        </div>
-                    \`;
+                    html += '<div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #ec489920, #f4347820); border-radius:8px; border:1px solid #ec489940;">' +
+                        '<div style="font-size:0.85rem; margin-bottom:8px;"><strong>🔄 Modifiche da Accettare</strong></div>' +
+                        '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">' +
+                        'Il proprietario ha modificato €' + myPendingAmount.toFixed(2) + ' di compensi.<br>Accetta o rifiuta le modifiche.</div>' +
+                        '<div style="display:flex; gap:8px;">' +
+                        '<button class="btn btn-success" onclick="acceptOwnerModification(\'' + currentMonth + '\')" style="flex:1;">✅ Accetta Tutto</button>' +
+                        '<button class="btn btn-danger" onclick="rejectOwnerModification(\'' + currentMonth + '\')" style="flex:1;">❌ Rifiuta Tutto</button>' +
+                        '</div></div>';
                 }
 
                 // Bottone per animatore: segna come consegnato
                 if (hasPendingItems && !isOwnerOrAdmin) {
-                    html += \`
-                        <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #6366f120, #818cf820); border-radius:8px; border:1px solid #6366f140;">
-                            <div style="font-size:0.85rem; margin-bottom:8px;">
-                                <strong>📤 Consegna Compensi</strong>
-                            </div>
-                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
-                                Hai €\${pendingAmount.toFixed(2)} da consegnare all'agenzia.<br>
-                                Segna come consegnati quando effettui il pagamento.
-                            </div>
-                            <button class="btn btn-warning" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
-                                📤 Segna Tutto come Consegnato
-                            </button>
-                        </div>
-                    \`;
+                    html += '<div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #6366f120, #818cf820); border-radius:8px; border:1px solid #6366f140;">' +
+                        '<div style="font-size:0.85rem; margin-bottom:8px;"><strong>📤 Consegna Compensi</strong></div>' +
+                        '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">' +
+                        'Hai €' + pendingAmount.toFixed(2) + ' da consegnare all\'agenzia.<br>Segna come consegnati quando effettui il pagamento.</div>' +
+                        '<button class="btn btn-warning" onclick="markAgencyFeesAsDelivered()" style="width:100%;">📤 Segna Tutto come Consegnato</button>' +
+                        '</div>';
                 }
 
                 // Bottone per owner: conferma ricezione
                 if (hasPendingOwnerConfirmation && isOwnerOrAdmin) {
-                    html += \`
-                        <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #f59e0b20, #f9731620); border-radius:8px; border:1px solid #f59e0b40;">
-                            <div style="font-size:0.85rem; margin-bottom:8px;">
-                                <strong>⏳ Compensi in Attesa di Conferma</strong>
-                            </div>
-                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
-                                €\${data.totalPendingOwnerConfirmation.toFixed(2)} segnati come consegnati dagli animatori.<br>
-                                Puoi modificare gli importi cliccando ✏️ o confermare direttamente.
-                            </div>
-                            <button class="btn btn-success" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="width:100%;">
-                                ✅ Conferma Ricezione
-                            </button>
-                        </div>
-                    \`;
+                    html += '<div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #f59e0b20, #f9731620); border-radius:8px; border:1px solid #f59e0b40;">' +
+                        '<div style="font-size:0.85rem; margin-bottom:8px;"><strong>⏳ Compensi in Attesa di Conferma</strong></div>' +
+                        '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">' +
+                        '€' + data.totalPendingOwnerConfirmation.toFixed(2) + ' segnati come consegnati dagli animatori.<br>Puoi modificare gli importi cliccando ✏️ o confermare direttamente.</div>' +
+                        '<button class="btn btn-success" onclick="confirmAgencyFeesReceived(\'' + currentMonth + '\')" style="width:100%;">✅ Conferma Ricezione</button>' +
+                        '</div>';
                 }
 
                 return html;
