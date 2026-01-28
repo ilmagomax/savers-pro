@@ -10787,11 +10787,62 @@ function fileToBase64(file) {
     });
 }
 
+// Comprime immagine per rispettare limite OCR.space (1MB)
+async function compressImageForOCR(file, maxSizeKB = 900) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            let width = img.width;
+            let height = img.height;
+
+            // Riduci dimensioni se troppo grande
+            const maxDimension = 1500;
+            if (width > maxDimension || height > maxDimension) {
+                if (width > height) {
+                    height = Math.round(height * maxDimension / width);
+                    width = maxDimension;
+                } else {
+                    width = Math.round(width * maxDimension / height);
+                    height = maxDimension;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Comprimi con qualità decrescente fino a rientrare nel limite
+            let quality = 0.85;
+            let base64 = canvas.toDataURL('image/jpeg', quality);
+
+            while (base64.length > maxSizeKB * 1024 * 1.37 && quality > 0.3) {
+                quality -= 0.1;
+                base64 = canvas.toDataURL('image/jpeg', quality);
+            }
+
+            console.log(`📸 Immagine compressa: ${Math.round(base64.length / 1024)}KB, qualità: ${Math.round(quality * 100)}%`);
+            resolve(base64);
+        };
+        img.onerror = () => resolve(null);
+        img.src = URL.createObjectURL(file);
+    });
+}
+
 // OCR con OCR.space API (più accurato, richiede internet)
 async function ocrWithOCRSpace(file, loadingText) {
-    if (loadingText) loadingText.textContent = 'Invio a OCR.space...';
+    if (loadingText) loadingText.textContent = 'Compressione immagine...';
 
-    const base64 = await fileToBase64(file);
+    // Comprimi immagine per rispettare limite 1MB
+    const base64 = await compressImageForOCR(file);
+
+    if (!base64) {
+        throw new Error('Errore compressione immagine');
+    }
+
+    if (loadingText) loadingText.textContent = 'Invio a OCR.space...';
 
     const formData = new FormData();
     formData.append('base64Image', base64);
@@ -10833,11 +10884,15 @@ async function ocrWithTesseract(file, loadingText) {
 
     if (loadingText) loadingText.textContent = 'Inizializzazione OCR locale...';
 
-    const { data: { text } } = await Tesseract.recognize(processedImage, 'ita', {
+    // Usa inglese come fallback (più affidabile, i numeri sono universali)
+    // L'italiano causa errori di file non trovato nel browser
+    const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
         logger: m => {
             if (loadingText) {
                 if (m.status === 'loading tesseract core') {
                     loadingText.textContent = 'Caricamento motore OCR...';
+                } else if (m.status === 'loading language traineddata') {
+                    loadingText.textContent = 'Caricamento lingua...';
                 } else if (m.status === 'recognizing text') {
                     loadingText.textContent = `Analisi testo... ${Math.round(m.progress * 100)}%`;
                 }
