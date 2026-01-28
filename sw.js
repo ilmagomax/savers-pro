@@ -3,11 +3,11 @@
 // Con supporto: Offline, Push Notifications, Background Sync
 // ============================================
 
-const CACHE_VERSION = 'v5.2';
+const CACHE_VERSION = 'v5.3';
 const CACHE_NAME = `savers-pro-v5-cache-${CACHE_VERSION}`;
 const ASSETS_TO_CACHE = [
     './',
-    './savers-pro-v5.html',
+    './index.html',
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
     'https://cdn.jsdelivr.net/npm/chart.js'
 ];
@@ -43,7 +43,7 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - network-first for HTML, cache-first for assets
 self.addEventListener('fetch', event => {
     // Skip non-GET requests
     if (event.request.method !== 'GET') return;
@@ -57,6 +57,37 @@ self.addEventListener('fetch', event => {
 
     if (!isSameOrigin && !isCDN) return;
 
+    // For HTML pages, use network-first strategy to always get fresh content
+    const isHTMLRequest = event.request.mode === 'navigate' ||
+                          event.request.destination === 'document' ||
+                          url.pathname.endsWith('.html') ||
+                          url.pathname === '/' ||
+                          url.pathname === '';
+
+    if (isHTMLRequest) {
+        // Network-first for HTML
+        event.respondWith(
+            fetch(event.request)
+                .then(networkResponse => {
+                    // Cache the fresh response
+                    const responseToCache = networkResponse.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(event.request, responseToCache);
+                    });
+                    return networkResponse;
+                })
+                .catch(() => {
+                    // Network failed, try cache
+                    return caches.match(event.request)
+                        .then(cachedResponse => {
+                            return cachedResponse || caches.match('./index.html');
+                        });
+                })
+        );
+        return;
+    }
+
+    // For other assets, use cache-first strategy
     event.respondWith(
         caches.match(event.request)
             .then(cachedResponse => {
@@ -83,10 +114,7 @@ self.addEventListener('fetch', event => {
                         return networkResponse;
                     })
                     .catch(() => {
-                        // Network failed, try to serve offline page
-                        if (event.request.mode === 'navigate') {
-                            return caches.match('./savers-pro-v5.html');
-                        }
+                        // Network failed
                         return new Response('Offline', { status: 503 });
                     });
             })

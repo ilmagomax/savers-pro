@@ -8029,7 +8029,7 @@ async function registerGoogleUser(email, name) {
             try {
                 await loadUserCalendars();
                 await loadCalendarEvents();
-                loadGoogleTaskLists();
+                // loadGoogleTaskLists(); // DISABLED - requires tasks scope in Supabase OAuth
                 console.log('📅 Google Calendar auto-connesso con account:', email);
             } catch (calError) {
                 console.warn('⚠️ Errore auto-connessione Calendar:', calError);
@@ -8183,7 +8183,7 @@ async function completeGoogleRegistration() {
             try {
                 await loadUserCalendars();
                 await loadCalendarEvents();
-                loadGoogleTaskLists();
+                // loadGoogleTaskLists(); // DISABLED - requires tasks scope in Supabase OAuth
                 console.log('📅 Google Calendar auto-connesso per nuovo utente');
             } catch (calError) {
                 console.warn('⚠️ Errore auto-connessione Calendar:', calError);
@@ -8898,7 +8898,7 @@ async function maybeEnableGoogleButtons() {
             try {
                 await loadUserCalendars();
                 await loadCalendarEvents();
-                loadGoogleTaskLists(); // Questo può andare in parallelo
+                // loadGoogleTaskLists(); // DISABLED - requires tasks scope in Supabase OAuth
             } catch (error) {
                 console.error('Errore caricamento Google Calendar:', error);
                 // Se errore di autenticazione, invalida il token
@@ -9155,7 +9155,7 @@ async function handleGoogleAuthResponse(response) {
                 await loadSharedProjects();
                 await loadUserCalendars();
                 await loadCalendarEvents();
-                loadGoogleTaskLists();
+                // loadGoogleTaskLists(); // DISABLED - requires tasks scope in Supabase OAuth
             } catch (error) {
                 console.error('Errore caricamento dati dopo refresh:', error);
             }
@@ -9206,7 +9206,7 @@ async function handleGoogleAuthResponse(response) {
     try {
         await loadUserCalendars();
         await loadCalendarEvents();
-        loadGoogleTaskLists(); // Può andare in parallelo
+        // loadGoogleTaskLists(); // DISABLED - requires tasks scope in Supabase OAuth
     } catch (error) {
         console.error('Errore caricamento dati Google:', error);
         if (error.status === 401 || error.status === 403) {
