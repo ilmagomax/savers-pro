@@ -17596,6 +17596,14 @@ function getAgencyFeesForMonth(yearMonth) {
                 const localEvent = state.events?.find(e => e.id === eventId);
                 if (localEvent) eventName = localEvent.title || 'Evento';
 
+                // Stati: pending (non consegnato), pending_confirmation (in attesa conferma), confirmed (confermato)
+                let status = 'pending';
+                if (c.agencyFeeConfirmed) {
+                    status = 'confirmed';
+                } else if (c.agencyFeeDelivered) {
+                    status = 'pending_confirmation';
+                }
+
                 items.push({
                     id: c.id,
                     eventId: eventId,
@@ -17605,19 +17613,26 @@ function getAgencyFeesForMonth(yearMonth) {
                     agencyFee: c.agencyFee,
                     delivered: c.agencyFeeDelivered || false,
                     confirmed: c.agencyFeeConfirmed || false,
-                    authorName: c.authorName
+                    status: status,
+                    authorName: c.authorName,
+                    authorEmail: c.authorEmail
                 });
 
-                if (c.agencyFeeDelivered) {
-                    totalDelivered += c.agencyFee;
+                if (c.agencyFeeConfirmed) {
+                    totalDelivered += c.agencyFee; // Confermati = completati
                 } else {
-                    totalPending += c.agencyFee;
+                    totalPending += c.agencyFee; // Sia pending che pending_confirmation = da completare
                 }
             }
         });
     });
 
-    return { totalFees, totalDelivered, totalPending, items };
+    // Calcola anche totale in attesa di conferma
+    const totalPendingConfirmation = items
+        .filter(i => i.status === 'pending_confirmation')
+        .reduce((sum, i) => sum + i.agencyFee, 0);
+
+    return { totalFees, totalDelivered, totalPending, totalPendingConfirmation, items };
 }
 
 // Renderizza il wallet Compensi Agenzia
@@ -17663,25 +17678,49 @@ function renderAgencyFeeWallet() {
                             <div style="font-size:0.75rem; color:var(--text-secondary);">${currentData.items.length} incassi</div>
                         </div>
                         <div style="text-align:right;">
-                            ${currentData.totalPending > 0 ? `
-                                <div style="font-size:0.85rem; color:#ef4444;">
-                                    ⏳ €${currentData.totalPending.toFixed(2)} da consegnare
+                            ${currentData.items.filter(i => i.status === 'pending').length > 0 ? `
+                                <div style="font-size:0.8rem; color:#6366f1;">
+                                    📋 €${currentData.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0).toFixed(2)} da consegnare
+                                </div>
+                            ` : ''}
+                            ${currentData.totalPendingConfirmation > 0 ? `
+                                <div style="font-size:0.8rem; color:#f59e0b;">
+                                    ⏳ €${currentData.totalPendingConfirmation.toFixed(2)} in attesa conferma
                                 </div>
                             ` : ''}
                             ${currentData.totalDelivered > 0 ? `
-                                <div style="font-size:0.85rem; color:#10b981;">
-                                    ✅ €${currentData.totalDelivered.toFixed(2)} consegnati
+                                <div style="font-size:0.8rem; color:#10b981;">
+                                    ✅ €${currentData.totalDelivered.toFixed(2)} confermati
                                 </div>
                             ` : ''}
                         </div>
                     </div>
-                    ${currentData.totalPending > 0 ? `
-                        <div style="margin-top:10px;">
-                            <button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
-                                📤 Segna Tutto come Consegnato
-                            </button>
-                        </div>
-                    ` : ''}
+                    ${(() => {
+                        const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+                        const hasPendingItems = currentData.items.filter(i => i.status === 'pending').length > 0;
+                        const hasPendingConfirmation = currentData.totalPendingConfirmation > 0;
+
+                        if (hasPendingConfirmation && isOwnerOrAdmin) {
+                            // Owner vede bottone per confermare
+                            return `
+                                <div style="margin-top:10px;">
+                                    <button class="btn btn-success btn-sm" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="width:100%;">
+                                        ✅ Conferma Ricezione €${currentData.totalPendingConfirmation.toFixed(2)}
+                                    </button>
+                                </div>
+                            `;
+                        } else if (hasPendingItems) {
+                            // Animatore vede bottone per segnare come consegnato
+                            return `
+                                <div style="margin-top:10px;">
+                                    <button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
+                                        📤 Segna Tutto come Consegnato
+                                    </button>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    })()}
                 </div>
 
                 ${prevData.totalFees > 0 ? `
@@ -17719,19 +17758,23 @@ function openAgencyFeeDetail() {
 
     const content = `
         <div style="margin-bottom:16px;">
-            <!-- Riepilogo -->
-            <div style="display:flex; gap:12px; margin-bottom:16px;">
-                <div style="flex:1; background:var(--bg-tertiary); padding:12px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Totale</div>
-                    <div style="font-size:1.2rem; font-weight:700; color:#f97316;">€${data.totalFees.toFixed(2)}</div>
+            <!-- Riepilogo con 3 stati -->
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:16px;">
+                <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">Totale</div>
+                    <div style="font-size:1rem; font-weight:700; color:#f97316;">€${data.totalFees.toFixed(2)}</div>
                 </div>
-                <div style="flex:1; background:var(--bg-tertiary); padding:12px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Da consegnare</div>
-                    <div style="font-size:1.2rem; font-weight:700; color:#ef4444;">€${data.totalPending.toFixed(2)}</div>
+                <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">📋 Pendente</div>
+                    <div style="font-size:1rem; font-weight:700; color:#6366f1;">€${data.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0).toFixed(2)}</div>
                 </div>
-                <div style="flex:1; background:var(--bg-tertiary); padding:12px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Consegnati</div>
-                    <div style="font-size:1.2rem; font-weight:700; color:#10b981;">€${data.totalDelivered.toFixed(2)}</div>
+                <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">⏳ In Attesa</div>
+                    <div style="font-size:1rem; font-weight:700; color:#f59e0b;">€${data.totalPendingConfirmation.toFixed(2)}</div>
+                </div>
+                <div style="background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">✅ Confermato</div>
+                    <div style="font-size:1rem; font-weight:700; color:#10b981;">€${data.totalDelivered.toFixed(2)}</div>
                 </div>
             </div>
 
@@ -17742,8 +17785,8 @@ function openAgencyFeeDetail() {
                         Nessun compenso registrato questo mese
                     </div>
                 ` : data.items.map(item => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color);"
-                         onclick="openEventFromAgencyFee('${item.eventId}')" style="cursor:pointer;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color); cursor:pointer;"
+                         onclick="openEventFromAgencyFee('${item.eventId}')">
                         <div>
                             <div style="font-weight:500;">${item.eventName}</div>
                             <div style="font-size:0.75rem; color:var(--text-secondary);">
@@ -17754,29 +17797,61 @@ function openAgencyFeeDetail() {
                         <div style="text-align:right;">
                             <div style="font-weight:600; color:#f97316;">€${item.agencyFee.toFixed(2)}</div>
                             <div style="font-size:0.7rem;">
-                                ${item.confirmed ? '<span style="color:#10b981;">✅ Confermato</span>' :
-                                  item.delivered ? '<span style="color:#f59e0b;">⏳ In verifica</span>' :
-                                  '<span style="color:#6366f1;">📋 Pendente</span>'}
+                                ${item.status === 'confirmed' ? '<span style="color:#10b981;">✅ Confermato</span>' :
+                                  item.status === 'pending_confirmation' ? '<span style="color:#f59e0b;">⏳ In attesa conferma</span>' :
+                                  '<span style="color:#6366f1;">📋 Da consegnare</span>'}
                             </div>
                         </div>
                     </div>
                 `).join('')}
             </div>
 
-            ${data.totalPending > 0 ? `
-                <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #f9731620, #ef444420); border-radius:8px; border:1px solid #f9731640;">
-                    <div style="font-size:0.85rem; margin-bottom:8px;">
-                        <strong>💡 Consegna Compensi</strong>
-                    </div>
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
-                        Hai €${data.totalPending.toFixed(2)} da consegnare all'agenzia.<br>
-                        Segna come consegnati quando effettui il pagamento.
-                    </div>
-                    <button class="btn btn-warning" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
-                        📤 Segna Tutto come Consegnato
-                    </button>
-                </div>
-            ` : ''}
+            ${(() => {
+                const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+                const pendingAmount = data.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0);
+                const hasPendingItems = pendingAmount > 0;
+                const hasPendingConfirmation = data.totalPendingConfirmation > 0;
+
+                let html = '';
+
+                // Bottone per animatore: segna come consegnato
+                if (hasPendingItems) {
+                    html += \`
+                        <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #6366f120, #818cf820); border-radius:8px; border:1px solid #6366f140;">
+                            <div style="font-size:0.85rem; margin-bottom:8px;">
+                                <strong>📤 Consegna Compensi</strong>
+                            </div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
+                                Hai €\${pendingAmount.toFixed(2)} da consegnare all'agenzia.<br>
+                                Segna come consegnati quando effettui il pagamento.
+                            </div>
+                            <button class="btn btn-warning" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
+                                📤 Segna Tutto come Consegnato
+                            </button>
+                        </div>
+                    \`;
+                }
+
+                // Bottone per owner: conferma ricezione
+                if (hasPendingConfirmation && isOwnerOrAdmin) {
+                    html += \`
+                        <div style="margin-top:16px; padding:12px; background:linear-gradient(135deg, #f59e0b20, #f9731620); border-radius:8px; border:1px solid #f59e0b40;">
+                            <div style="font-size:0.85rem; margin-bottom:8px;">
+                                <strong>⏳ Compensi in Attesa di Conferma</strong>
+                            </div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px;">
+                                €\${data.totalPendingConfirmation.toFixed(2)} segnati come consegnati dagli animatori.<br>
+                                Conferma quando hai ricevuto il pagamento.
+                            </div>
+                            <button class="btn btn-success" onclick="confirmAgencyFeesReceived('${currentMonth}')" style="width:100%;">
+                                ✅ Conferma Ricezione
+                            </button>
+                        </div>
+                    \`;
+                }
+
+                return html;
+            })()}
         </div>
         <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="width:100%;">Chiudi</button>
     `;
@@ -17797,26 +17872,36 @@ function openEventFromAgencyFee(eventId) {
     }, 300);
 }
 
-// Segna tutti i compensi pendenti come consegnati
+// Segna tutti i compensi pendenti come consegnati (in attesa di conferma dal proprietario)
 async function markAgencyFeesAsDelivered() {
     const currentMonth = new Date().toISOString().slice(0, 7);
+    const [year, month] = currentMonth.split('-');
+    const monthNames = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                       'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+    const monthName = monthNames[parseInt(month) - 1];
+
     const eventComments = state.eventComments || {};
     const now = new Date().toISOString();
     let count = 0;
+    let totalAmount = 0;
 
     const sb = getSupabase();
+    const myEmail = state.profile?.email;
+    const myName = state.profile?.name || state.profile?.stageName || 'Animatore';
 
-    // Scorri tutti i commenti e segna come consegnati
+    // Scorri tutti i commenti e segna come consegnati (pending_confirmation)
     for (const eventId of Object.keys(eventComments)) {
         const comments = eventComments[eventId] || [];
         for (const c of comments) {
-            if (c.type === 'income' && c.agencyFee > 0 && !c.agencyFeeDelivered) {
+            if (c.type === 'income' && c.agencyFee > 0 && !c.agencyFeeDelivered && !c.agencyFeeConfirmed) {
                 const commentDate = c.createdAt?.split('T')[0];
                 if (!commentDate || commentDate.slice(0, 7) !== currentMonth) continue;
 
                 c.agencyFeeDelivered = true;
                 c.agencyFeeDeliveredAt = now;
+                c.agencyFeeDeliveredBy = myEmail;
                 count++;
+                totalAmount += c.agencyFee;
 
                 // Aggiorna su Supabase
                 if (sb && currentUser && c.id) {
@@ -17825,7 +17910,8 @@ async function markAgencyFeesAsDelivered() {
                             .from('event_comments')
                             .update({
                                 agency_fee_delivered: true,
-                                agency_fee_delivered_at: now
+                                agency_fee_delivered_at: now,
+                                agency_fee_delivered_by: myEmail
                             })
                             .eq('id', c.id);
                     } catch (err) {
@@ -17836,11 +17922,148 @@ async function markAgencyFeesAsDelivered() {
         }
     }
 
+    // Crea notifica per il proprietario dell'organizzazione
+    if (sb && currentUser && count > 0) {
+        try {
+            // Trova il proprietario dell'organizzazione
+            const orgId = state.organizationId;
+            if (orgId) {
+                const { data: owners } = await sb
+                    .from('profiles')
+                    .select('id, email')
+                    .eq('organization_id', orgId)
+                    .eq('org_role', 'owner');
+
+                // Crea notifica per ogni owner
+                for (const owner of (owners || [])) {
+                    if (owner.email?.toLowerCase() !== myEmail?.toLowerCase()) {
+                        await sb
+                            .from('notifications')
+                            .insert({
+                                user_id: owner.id,
+                                organization_id: orgId,
+                                type: 'system',
+                                title: '💰 Compensi in Attesa di Conferma',
+                                body: `${myName} ha segnato €${totalAmount.toFixed(2)} di compensi ${monthName} come consegnati. Conferma la ricezione.`,
+                                entity_type: 'agency_fee_delivery',
+                                entity_id: null,
+                                link: '/finance',
+                                actor_id: currentUser.id
+                            });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Errore invio notifica:', err);
+        }
+    }
+
     saveStateAndSync();
     closeModal('dynamicModal');
     renderAgencyFeeWallet();
 
-    showToast(`${count} compensi segnati come consegnati!`, 'success');
+    showToast(`${count} compensi segnati come consegnati! In attesa di conferma dal proprietario.`, 'success');
+}
+
+// Conferma ricezione compensi (solo per proprietario/admin)
+async function confirmAgencyFeesReceived(yearMonth) {
+    const eventComments = state.eventComments || {};
+    const now = new Date().toISOString();
+    let count = 0;
+    let totalAmount = 0;
+
+    const sb = getSupabase();
+    const myEmail = state.profile?.email;
+
+    // Verifica che sia owner/admin
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    if (!isOwnerOrAdmin) {
+        showToast('Solo il proprietario può confermare i compensi', 'error');
+        return;
+    }
+
+    // Scorri tutti i commenti e conferma quelli in pending_confirmation
+    for (const eventId of Object.keys(eventComments)) {
+        const comments = eventComments[eventId] || [];
+        for (const c of comments) {
+            if (c.type === 'income' && c.agencyFee > 0 && c.agencyFeeDelivered && !c.agencyFeeConfirmed) {
+                const commentDate = c.createdAt?.split('T')[0];
+                if (!commentDate) continue;
+
+                // Se specificato un mese, filtra per quello
+                if (yearMonth && commentDate.slice(0, 7) !== yearMonth) continue;
+
+                c.agencyFeeConfirmed = true;
+                c.agencyFeeConfirmedAt = now;
+                c.agencyFeeConfirmedBy = myEmail;
+                count++;
+                totalAmount += c.agencyFee;
+
+                // Aggiorna su Supabase
+                if (sb && currentUser && c.id) {
+                    try {
+                        await sb
+                            .from('event_comments')
+                            .update({
+                                agency_fee_confirmed: true,
+                                agency_fee_confirmed_at: now,
+                                agency_fee_confirmed_by: myEmail
+                            })
+                            .eq('id', c.id);
+                    } catch (err) {
+                        console.error('Errore conferma compensi:', err);
+                    }
+                }
+            }
+        }
+    }
+
+    // Notifica l'animatore che i compensi sono stati confermati
+    if (sb && currentUser && count > 0) {
+        try {
+            // Trova gli animatori che hanno consegnato
+            const deliveredByEmails = new Set();
+            for (const eventId of Object.keys(eventComments)) {
+                const comments = eventComments[eventId] || [];
+                for (const c of comments) {
+                    if (c.agencyFeeDeliveredBy && c.agencyFeeConfirmed) {
+                        deliveredByEmails.add(c.agencyFeeDeliveredBy.toLowerCase());
+                    }
+                }
+            }
+
+            for (const email of deliveredByEmails) {
+                const { data: animator } = await sb
+                    .from('profiles')
+                    .select('id')
+                    .eq('email', email)
+                    .single();
+
+                if (animator && animator.id !== currentUser.id) {
+                    await sb
+                        .from('notifications')
+                        .insert({
+                            user_id: animator.id,
+                            organization_id: state.organizationId,
+                            type: 'system',
+                            title: '✅ Compensi Confermati',
+                            body: `I tuoi compensi (€${totalAmount.toFixed(2)}) sono stati confermati come ricevuti.`,
+                            entity_type: 'agency_fee_confirmed',
+                            link: '/finance',
+                            actor_id: currentUser.id
+                        });
+                }
+            }
+        } catch (err) {
+            console.error('Errore invio notifica conferma:', err);
+        }
+    }
+
+    saveStateAndSync();
+    closeModal('dynamicModal');
+    renderAgencyFeeWallet();
+
+    showToast(`${count} compensi confermati come ricevuti!`, 'success');
 }
 
 // Renderizza dashboard eventi nella pagina Finance
