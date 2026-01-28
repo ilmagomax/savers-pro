@@ -4409,10 +4409,17 @@ async function loadHabitsFromDB() {
                 return l.completed_at.split('T')[0];
             }).filter(d => d);
 
+            // Sanitize icon - ensure it's a string emoji, not an object
+            let icon = h.icon;
+            if (typeof icon === 'object' && icon !== null) {
+                icon = '✅';
+            }
+            icon = icon || '✅';
+
             return {
                 id: h.id,
                 name: h.name,
-                icon: h.icon || '✅',
+                icon: icon,
                 frequency: h.frequency || 'daily',
                 department: h.department || 'personal',
                 streak: h.current_streak || 0,
@@ -7198,6 +7205,7 @@ function saveState() {
 }
 
 // Salva lo stato su Google Sheets con debounce breve
+// NOTA: Skip Google Sheets sync when Supabase is active (dati personali già salvati su Supabase)
 function saveStateAndSync(modifiedCollection = null, modifiedItemId = null) {
     window.state = state;
 
@@ -7208,6 +7216,13 @@ function saveStateAndSync(modifiedCollection = null, modifiedItemId = null) {
         } else {
             markCollectionDirty(modifiedCollection);
         }
+    }
+
+    // Se Supabase è attivo, i dati personali sono già salvati lì - skip Google Sheets
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        console.log('⏭️ Skipping Google Sheets sync (using Supabase)');
+        return;
     }
 
     // Sincronizza con debounce di 1 secondo (per evitare troppe chiamate)
@@ -13169,10 +13184,17 @@ function renderTodayHabits() {
         }
         habitName = habitName || 'Abitudine';
 
+        // Protezione: estrai l'icona correttamente anche se è un oggetto
+        let habitIcon = habit.icon;
+        if (typeof habitIcon === 'object' && habitIcon !== null) {
+            habitIcon = '✨'; // fallback se è un oggetto
+        }
+        habitIcon = habitIcon || '✨';
+
         return `
             <div class="habit-item ${completedToday ? 'completed' : ''}" style="position:relative;">
                 <div style="display:flex;align-items:center;flex:1;gap:12px;" onclick="toggleHabit('${habit.id}')">
-                    <div class="habit-icon">${habit.icon || '✨'}</div>
+                    <div class="habit-icon">${habitIcon}</div>
                     <div class="habit-info">
                         <div class="habit-name">${habitName}</div>
                         <div class="habit-streak">🔥 ${habit.streak || 0} giorni ${hasSchedule}</div>
