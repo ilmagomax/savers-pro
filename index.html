@@ -4372,6 +4372,270 @@ function setupSupabaseAuth() {
     });
 }
 
+// ============================================
+// HABITS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+// Load all habits from Supabase
+async function loadHabitsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+
+    try {
+        const { data, error } = await sb
+            .from('habits')
+            .select('*, habit_logs(completed_at, notes)')
+            .eq('user_id', currentUser.id)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error loading habits:', error);
+            return [];
+        }
+
+        // Convert DB format to state format
+        return data.map(h => ({
+            id: h.id,
+            name: h.name,
+            icon: h.icon || '✅',
+            frequency: h.frequency || 'daily',
+            department: h.department || 'personal',
+            streak: h.current_streak || 0,
+            bestStreak: h.best_streak || 0,
+            totalCompletions: h.total_completions || 0,
+            completedDates: h.habit_logs?.map(l => l.completed_at) || [],
+            scheduledTime: h.reminder_time,
+            createdAt: h.created_at,
+            color: h.color,
+            description: h.description,
+            _supabaseId: h.id // Keep reference to DB id
+        }));
+    } catch (err) {
+        console.error('Error in loadHabitsFromDB:', err);
+        return [];
+    }
+}
+
+// Save new habit to Supabase
+async function saveHabitToDB(habit) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+
+    try {
+        const { data, error } = await sb
+            .from('habits')
+            .insert({
+                user_id: currentUser.id,
+                name: habit.name,
+                icon: habit.icon || '✅',
+                frequency: habit.frequency || 'daily',
+                department: habit.department || 'personal',
+                current_streak: 0,
+                best_streak: 0,
+                total_completions: 0,
+                reminder_time: habit.scheduledTime || null,
+                color: habit.color || '#6366f1',
+                description: habit.description || null
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error saving habit to DB:', error);
+            return null;
+        }
+
+        console.log('✅ Habit saved to Supabase:', data.id);
+        return data;
+    } catch (err) {
+        console.error('Error in saveHabitToDB:', err);
+        return null;
+    }
+}
+
+// Update habit in Supabase
+async function updateHabitInDB(habitId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+
+    try {
+        const dbUpdates = {};
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
+        if (updates.frequency !== undefined) dbUpdates.frequency = updates.frequency;
+        if (updates.department !== undefined) dbUpdates.department = updates.department;
+        if (updates.streak !== undefined) dbUpdates.current_streak = updates.streak;
+        if (updates.bestStreak !== undefined) dbUpdates.best_streak = updates.bestStreak;
+        if (updates.totalCompletions !== undefined) dbUpdates.total_completions = updates.totalCompletions;
+        if (updates.scheduledTime !== undefined) dbUpdates.reminder_time = updates.scheduledTime;
+        if (updates.color !== undefined) dbUpdates.color = updates.color;
+
+        const { error } = await sb
+            .from('habits')
+            .update(dbUpdates)
+            .eq('id', habitId)
+            .eq('user_id', currentUser.id);
+
+        if (error) {
+            console.error('Error updating habit:', error);
+            return false;
+        }
+
+        return true;
+    } catch (err) {
+        console.error('Error in updateHabitInDB:', err);
+        return false;
+    }
+}
+
+// Delete habit from Supabase (soft delete - set is_active to false)
+async function deleteHabitFromDB(habitId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+
+    try {
+        const { error } = await sb
+            .from('habits')
+            .update({ is_active: false })
+            .eq('id', habitId)
+            .eq('user_id', currentUser.id);
+
+        if (error) {
+            console.error('Error deleting habit:', error);
+            return false;
+        }
+
+        console.log('✅ Habit deleted from Supabase:', habitId);
+        return true;
+    } catch (err) {
+        console.error('Error in deleteHabitFromDB:', err);
+        return false;
+    }
+}
+
+// Toggle habit completion in Supabase
+async function toggleHabitInDB(habitId, date, completed) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+
+    try {
+        if (completed) {
+            // Add completion log
+            const { error } = await sb
+                .from('habit_logs')
+                .insert({
+                    habit_id: habitId,
+                    user_id: currentUser.id,
+                    completed_at: date
+                });
+
+            if (error) {
+                // Check if already exists (unique constraint)
+                if (error.code === '23505') {
+                    console.log('Habit already completed for this date');
+                    return true;
+                }
+                console.error('Error adding habit log:', error);
+                return false;
+            }
+
+            // Update streak and total
+            await updateHabitStreakInDB(habitId);
+            console.log('✅ Habit completion logged:', habitId, date);
+        } else {
+            // Remove completion log
+            const { error } = await sb
+                .from('habit_logs')
+                .delete()
+                .eq('habit_id', habitId)
+                .eq('completed_at', date);
+
+            if (error) {
+                console.error('Error removing habit log:', error);
+                return false;
+            }
+
+            // Update streak
+            await updateHabitStreakInDB(habitId);
+            console.log('✅ Habit completion removed:', habitId, date);
+        }
+
+        return true;
+    } catch (err) {
+        console.error('Error in toggleHabitInDB:', err);
+        return false;
+    }
+}
+
+// Update habit streak based on logs
+async function updateHabitStreakInDB(habitId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+
+    try {
+        // Get all logs for this habit ordered by date
+        const { data: logs, error } = await sb
+            .from('habit_logs')
+            .select('completed_at')
+            .eq('habit_id', habitId)
+            .order('completed_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching habit logs:', error);
+            return;
+        }
+
+        // Calculate streak
+        let streak = 0;
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+        if (logs && logs.length > 0) {
+            const dates = logs.map(l => l.completed_at);
+
+            // Check if completed today or yesterday to start streak count
+            if (dates.includes(today) || dates.includes(yesterday)) {
+                streak = 1;
+                let checkDate = dates.includes(today) ? today : yesterday;
+
+                for (let i = 1; i < 365; i++) {
+                    const prevDate = new Date(new Date(checkDate).getTime() - (i * 86400000))
+                        .toISOString().split('T')[0];
+                    if (dates.includes(prevDate)) {
+                        streak++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Get current best streak
+        const { data: habit } = await sb
+            .from('habits')
+            .select('best_streak, total_completions')
+            .eq('id', habitId)
+            .single();
+
+        const bestStreak = Math.max(habit?.best_streak || 0, streak);
+        const totalCompletions = logs?.length || 0;
+
+        // Update habit
+        await sb
+            .from('habits')
+            .update({
+                current_streak: streak,
+                best_streak: bestStreak,
+                total_completions: totalCompletions
+            })
+            .eq('id', habitId);
+
+    } catch (err) {
+        console.error('Error updating habit streak:', err);
+    }
+}
+
 // Ensure user profile exists in database
 async function ensureUserProfile() {
     const sb = getSupabase();
@@ -4451,8 +4715,93 @@ async function ensureUserProfile() {
         updateSupabaseProfileUI();
 
         console.log('✅ Profile loaded:', profile?.full_name);
+
+        // Load habits from Supabase
+        await loadHabitsFromSupabase();
+
     } catch (err) {
         console.error('Profile error:', err);
+    }
+}
+
+// Load habits from Supabase and merge with local state
+async function loadHabitsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+
+    try {
+        console.log('📥 Loading habits from Supabase...');
+        const dbHabits = await loadHabitsFromDB();
+
+        if (dbHabits && dbHabits.length > 0) {
+            // Replace local habits with DB habits
+            state.habits = dbHabits;
+            console.log(`✅ Loaded ${dbHabits.length} habits from Supabase`);
+
+            // Render updated habits
+            if (typeof renderHabitsPage === 'function') {
+                renderHabitsPage();
+            }
+            if (typeof renderRoutinePage === 'function') {
+                renderRoutinePage();
+            }
+            if (typeof updateHabitStats === 'function') {
+                updateHabitStats();
+            }
+        } else {
+            console.log('ℹ️ No habits found in Supabase, using local state');
+
+            // If we have local habits, migrate them to Supabase
+            if (state.habits && state.habits.length > 0) {
+                console.log('🔄 Migrating local habits to Supabase...');
+                await migrateLocalHabitsToSupabase();
+            }
+        }
+    } catch (err) {
+        console.error('Error loading habits from Supabase:', err);
+    }
+}
+
+// Migrate existing local habits to Supabase (one-time migration)
+async function migrateLocalHabitsToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.habits) return;
+
+    let migrated = 0;
+    for (const localHabit of state.habits) {
+        // Skip if already has Supabase ID
+        if (localHabit._supabaseId) continue;
+
+        try {
+            const dbHabit = await saveHabitToDB({
+                name: localHabit.name,
+                icon: localHabit.icon,
+                frequency: localHabit.frequency,
+                department: localHabit.department
+            });
+
+            if (dbHabit) {
+                // Update local habit with Supabase ID
+                localHabit._supabaseId = dbHabit.id;
+                localHabit.id = dbHabit.id;
+
+                // Migrate completed dates as habit_logs
+                if (localHabit.completedDates && localHabit.completedDates.length > 0) {
+                    for (const date of localHabit.completedDates) {
+                        await toggleHabitInDB(dbHabit.id, date, true);
+                    }
+                }
+
+                migrated++;
+            }
+        } catch (err) {
+            console.warn('Error migrating habit:', err);
+        }
+    }
+
+    if (migrated > 0) {
+        console.log(`✅ Migrated ${migrated} habits to Supabase`);
+        showToast(`${migrated} abitudini migrate al cloud`, 'success');
     }
 }
 
@@ -12132,44 +12481,58 @@ function renderTodayHabits() {
     });
 }
 
-function toggleHabit(id) {
+async function toggleHabit(id) {
     const habit = state.habits.find(h => h.id === id);
     if (!habit) return;
 
     if (!habit.completedDates) habit.completedDates = [];
 
-    const index = habit.completedDates.indexOf(state.today.date);
-    if (index > -1) {
-        // Uncomplete
-        habit.completedDates.splice(index, 1);
-        habit.streak = Math.max(0, (habit.streak || 0) - 1);
-    } else {
-        // Complete
-        habit.completedDates.push(state.today.date);
+    const today = state.today.date;
+    const index = habit.completedDates.indexOf(today);
+    const isCompleting = index === -1;
+
+    // Update local state immediately for responsive UI
+    if (isCompleting) {
+        habit.completedDates.push(today);
         habit.streak = (habit.streak || 0) + 1;
         addXP(5);
 
-        // Estrai nome correttamente
         const habitName = typeof habit.name === 'object' ? (habit.name?.name || habit.name?.title || 'Abitudine') : (habit.name || 'Abitudine');
         showToast(`${habitName} completato! +5 XP`, 'success');
 
-        // Log per KPI e sync cloud
         logAttivita('abitudine_completata', 'abitudini', id, { nome: habitName, streak: habit.streak });
+    } else {
+        habit.completedDates.splice(index, 1);
+        habit.streak = Math.max(0, (habit.streak || 0) - 1);
+    }
 
-        // Sincronizza con cloud per LogAbitudini
-        if (state.cloudUser?.token) {
+    // Update UI immediately
+    renderHabitsPage();
+    renderRoutinePage();
+    updateHabitStats();
+    checkBadges();
+
+    // Save to Supabase (async, don't block UI)
+    const sb = getSupabase();
+    if (sb && currentUser && habit._supabaseId) {
+        toggleHabitInDB(habit._supabaseId || id, today, isCompleting)
+            .then(success => {
+                if (!success) {
+                    console.warn('Failed to sync habit to Supabase, will retry on next sync');
+                }
+            })
+            .catch(err => console.warn('Error syncing habit:', err));
+    } else {
+        // Fallback: sync to Google Sheets
+        saveStateAndSync();
+
+        if (state.cloudUser?.token && isCompleting) {
             apiCall('logCompletamentoAbitudine', {
                 abitudine_id: id,
                 completata: true
             }).catch(e => console.warn('Errore sync abitudine:', e));
         }
     }
-
-    saveStateAndSync();
-    renderHabitsPage();
-    renderRoutinePage();
-    updateHabitStats();
-    checkBadges();
 }
 
 // Schedula un'abitudine in Google Calendar
@@ -12344,30 +12707,73 @@ function selectHabitIcon(icon) {
     event.target.classList.add('btn-primary');
 }
 
-function saveHabit() {
+async function saveHabit() {
     const name = document.getElementById('habitName').value.trim();
     if (!name) {
         showToast('Inserisci un nome', 'error');
         return;
     }
 
-    const habit = {
-        id: 'habit_' + Date.now(),
+    const habitData = {
         name,
         icon: selectedHabitIcon,
         frequency: document.getElementById('habitFrequency').value,
-        department: document.getElementById('habitDepartment').value || 'personal',
-        streak: 0,
-        completedDates: [],
-        createdAt: new Date().toISOString()
+        department: document.getElementById('habitDepartment').value || 'personal'
     };
 
-    state.habits.push(habit);
-    saveStateAndSync();
-
+    // Close modal and clear input immediately for better UX
     document.getElementById('habitName').value = '';
-
     closeModal('addHabitModal');
+
+    // Try to save to Supabase first
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbHabit = await saveHabitToDB(habitData);
+        if (dbHabit) {
+            // Use the DB-generated UUID as ID
+            const habit = {
+                id: dbHabit.id,
+                name: dbHabit.name,
+                icon: dbHabit.icon,
+                frequency: dbHabit.frequency,
+                department: dbHabit.department,
+                streak: 0,
+                completedDates: [],
+                createdAt: dbHabit.created_at,
+                _supabaseId: dbHabit.id
+            };
+            state.habits.push(habit);
+        } else {
+            // Fallback to local if DB save failed
+            const habit = {
+                id: 'habit_' + Date.now(),
+                name: habitData.name,
+                icon: habitData.icon,
+                frequency: habitData.frequency,
+                department: habitData.department,
+                streak: 0,
+                completedDates: [],
+                createdAt: new Date().toISOString()
+            };
+            state.habits.push(habit);
+            saveStateAndSync(); // Sync to Google Sheets as fallback
+        }
+    } else {
+        // No Supabase - use local state
+        const habit = {
+            id: 'habit_' + Date.now(),
+            name: habitData.name,
+            icon: habitData.icon,
+            frequency: habitData.frequency,
+            department: habitData.department,
+            streak: 0,
+            completedDates: [],
+            createdAt: new Date().toISOString()
+        };
+        state.habits.push(habit);
+        saveStateAndSync();
+    }
+
     renderHabitsPage();
     renderRoutinePage();
     updateDepartmentStats();
