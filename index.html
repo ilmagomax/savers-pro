@@ -5222,16 +5222,47 @@ async function deleteTransactionFromDB(txId) {
     } catch (err) { return false; }
 }
 
+async function updateTransactionInDB(txId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const dbUpdates = {
+            updated_at: new Date().toISOString()
+        };
+        if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+        if (updates.category !== undefined) dbUpdates.category = updates.category;
+        if (updates.date !== undefined) dbUpdates.date = updates.date;
+        if (updates.method !== undefined) dbUpdates.payment_method = updates.method;
+        if (updates.department !== undefined) dbUpdates.department = updates.department;
+
+        const { error } = await sb.from('transactions').update(dbUpdates).eq('id', txId).eq('user_id', currentUser.id);
+        if (error) { console.error('Error updating transaction:', error); return false; }
+        console.log('✅ Transaction updated in Supabase:', txId);
+        return true;
+    } catch (err) { console.error('Error in updateTransactionInDB:', err); return false; }
+}
+
 async function loadTransactionsFromSupabase() {
     const sb = getSupabase();
     if (!sb || !currentUser) return;
     try {
+        console.log('📥 Loading transactions from Supabase...');
         const dbTx = await loadTransactionsFromDB();
+        console.log('📊 Transactions from DB:', dbTx?.length || 0, dbTx);
         if (dbTx && dbTx.length > 0) {
             state.transactions = dbTx;
             console.log(`✅ Loaded ${dbTx.length} transactions from Supabase`);
-        } else if (state.transactions?.length > 0) {
-            await migrateLocalTransactionsToSupabase();
+            // Aggiorna UI
+            if (typeof renderFinancePage === 'function') {
+                renderFinancePage();
+            }
+        } else {
+            console.log('ℹ️ No transactions found in Supabase');
+            if (state.transactions?.length > 0) {
+                console.log('🔄 Migrating local transactions...');
+                await migrateLocalTransactionsToSupabase();
+            }
         }
     } catch (err) { console.error('Error loading transactions:', err); }
 }
@@ -11764,7 +11795,7 @@ function showOCRConfidence(confidence) {
     }
 }
 
-function saveScannedReceipt() {
+async function saveScannedReceipt() {
     // Get values from form inputs (user may have edited them)
     const amount = parseFloat(document.getElementById('scannedAmount').value);
     const date = document.getElementById('scannedDate').value;
@@ -11784,26 +11815,38 @@ function saveScannedReceipt() {
     if (!description) description = 'Spesa';
     if (notes.trim()) description += ` - ${notes.trim()}`;
 
-    const transaction = {
-        id: 'tx_' + Date.now(),
+    const txData = {
         type: 'expense',
         amount: amount,
         description: description,
         category: category,
         date: date || state.today.date,
         method: method,
-        scanned: true,
-        createdAt: new Date().toISOString()
+        scanned: true
     };
-
-    state.transactions.push(transaction);
-    state.stats.transactionsLogged++;
-    if (!state.stats.receiptsScanned) state.stats.receiptsScanned = 0;
-    state.stats.receiptsScanned++;
-    saveStateAndSync();
 
     closeModal('scanReceiptModal');
     resetScanner();
+
+    // Save to Supabase if available
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbTx = await saveTransactionToDB(txData);
+        if (dbTx) {
+            state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+        } else {
+            state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+            saveStateAndSync('transactions');
+        }
+    } else {
+        state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+        saveStateAndSync('transactions');
+    }
+
+    state.stats.transactionsLogged++;
+    if (!state.stats.receiptsScanned) state.stats.receiptsScanned = 0;
+    state.stats.receiptsScanned++;
+
     renderFinancePage();
     renderHomePage();
     addXP(5);
@@ -16397,22 +16440,164 @@ function openTransactionDetail(txId) {
     const tx = (state.transactions || []).find(t => t.id === txId);
     if (!tx) return;
 
+    // Store for editing
+    window.editingTransactionId = txId;
+
     const catInfo = tx.type === 'expense'
         ? (EXPENSE_CATEGORIES[tx.category] || EXPENSE_CATEGORIES.other)
         : (INCOME_CATEGORIES[tx.category] || INCOME_CATEGORIES.other);
 
-    const details = `
-${tx.type === 'expense' ? '💸 Spesa' : '💰 Entrata'}: ${formatCurrency(tx.amount)}
-📂 Categoria: ${catInfo.icon} ${catInfo.name}
-📝 Descrizione: ${tx.description || '-'}
-📅 Data: ${formatDate(tx.date)}
-💳 Metodo: ${tx.method === 'cash' ? 'Contanti' : tx.method === 'transfer' ? 'Bonifico' : 'Carta'}
-${tx.department === 'work' ? '🎭 Area: Lavoro' : '👤 Area: Personale'}
-    `.trim();
+    // Create custom modal for transaction detail with Edit/Delete options
+    const modalContent = `
+        <div style="text-align: left; padding: 10px 0;">
+            <div style="font-size: 1.5em; margin-bottom: 15px; color: ${tx.type === 'expense' ? 'var(--danger)' : 'var(--success)'}">
+                ${tx.type === 'expense' ? '💸 Spesa' : '💰 Entrata'}: ${formatCurrency(tx.amount)}
+            </div>
+            <div style="margin: 8px 0;"><strong>📂 Categoria:</strong> ${catInfo.icon} ${catInfo.name}</div>
+            <div style="margin: 8px 0;"><strong>📝 Descrizione:</strong> ${tx.description || '-'}</div>
+            <div style="margin: 8px 0;"><strong>📅 Data:</strong> ${formatDate(tx.date)}</div>
+            <div style="margin: 8px 0;"><strong>💳 Metodo:</strong> ${tx.method === 'cash' ? 'Contanti' : tx.method === 'transfer' ? 'Bonifico' : 'Carta'}</div>
+            <div style="margin: 8px 0;"><strong>${tx.department === 'work' ? '🎭 Area: Lavoro' : '👤 Area: Personale'}</strong></div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="openEditTransactionModal('${txId}')" style="flex: 1; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                ✏️ Modifica
+            </button>
+            <button onclick="confirmDeleteTransaction('${txId}')" style="flex: 1; padding: 12px; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                🗑️ Elimina
+            </button>
+        </div>
+    `;
 
-    if (confirm(details + '\n\nVuoi eliminare questa transazione?')) {
+    showModal('Dettaglio Transazione', modalContent);
+}
+
+// Confirm delete transaction
+function confirmDeleteTransaction(txId) {
+    closeModal('dynamicModal');
+    if (confirm('Sei sicuro di voler eliminare questa transazione?')) {
         deleteTransaction(txId);
     }
+}
+
+// Open edit transaction modal
+function openEditTransactionModal(txId) {
+    closeModal('dynamicModal');
+    const tx = (state.transactions || []).find(t => t.id === txId);
+    if (!tx) return;
+
+    window.editingTransactionId = txId;
+
+    const categories = tx.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    const categoryOptions = Object.entries(categories).map(([key, cat]) =>
+        `<option value="${key}" ${tx.category === key ? 'selected' : ''}>${cat.icon} ${cat.name}</option>`
+    ).join('');
+
+    const modalContent = `
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Importo (€)</label>
+                <input type="number" id="editTxAmount" value="${tx.amount}" step="0.01" min="0"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Descrizione</label>
+                <input type="text" id="editTxDesc" value="${tx.description || ''}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Categoria</label>
+                <select id="editTxCategory" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+                    ${categoryOptions}
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Data</label>
+                <input type="date" id="editTxDate" value="${tx.date}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Metodo di pagamento</label>
+                <select id="editTxMethod" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+                    <option value="card" ${tx.method === 'card' ? 'selected' : ''}>💳 Carta</option>
+                    <option value="cash" ${tx.method === 'cash' ? 'selected' : ''}>💵 Contanti</option>
+                    <option value="transfer" ${tx.method === 'transfer' ? 'selected' : ''}>🏦 Bonifico</option>
+                </select>
+            </div>
+            <button onclick="saveEditedTransaction()" style="width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 10px;">
+                💾 Salva Modifiche
+            </button>
+        </div>
+    `;
+
+    showModal('Modifica Transazione', modalContent);
+}
+
+// Save edited transaction
+async function saveEditedTransaction() {
+    const txId = window.editingTransactionId;
+    if (!txId) return;
+
+    const tx = (state.transactions || []).find(t => t.id === txId);
+    if (!tx) return;
+
+    const amount = parseFloat(document.getElementById('editTxAmount').value);
+    if (!amount || amount <= 0) {
+        showToast('Inserisci un importo valido', 'error');
+        return;
+    }
+
+    const updates = {
+        amount: amount,
+        description: document.getElementById('editTxDesc').value,
+        category: document.getElementById('editTxCategory').value,
+        date: document.getElementById('editTxDate').value,
+        method: document.getElementById('editTxMethod').value
+    };
+
+    // Update local state
+    Object.assign(tx, updates);
+
+    // Save to Supabase
+    const sb = getSupabase();
+    if (sb && currentUser && (tx._supabaseId || tx.id)) {
+        const success = await updateTransactionInDB(tx._supabaseId || tx.id, updates);
+        if (!success) {
+            console.warn('Failed to update transaction in Supabase');
+        }
+    } else {
+        saveStateAndSync('transactions');
+    }
+
+    closeModal('dynamicModal');
+    window.editingTransactionId = null;
+    renderFinancePage();
+    showToast('Transazione aggiornata!', 'success');
+}
+
+// Helper function to show dynamic modal
+function showModal(title, content) {
+    // Check if dynamicModal exists, if not create it
+    let modal = document.getElementById('dynamicModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'dynamicModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="dynamicModalTitle"></h3>
+                    <button class="close-btn" onclick="closeModal('dynamicModal')">×</button>
+                </div>
+                <div class="modal-body" id="dynamicModalBody"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    document.getElementById('dynamicModalTitle').textContent = title;
+    document.getElementById('dynamicModalBody').innerHTML = content;
+    modal.classList.add('active');
 }
 
 // Elimina transazione
@@ -16660,7 +16845,7 @@ function updateSplitTotal() {
     document.getElementById('splitTotalCheck').textContent = formatCurrency(total);
 }
 
-function saveSplitTransaction() {
+async function saveSplitTransaction() {
     const totalAmount = parseFloat(document.getElementById('splitTotalAmount').value);
     if (!totalAmount || totalAmount <= 0) {
         showToast('Inserisci un importo totale valido', 'error');
@@ -16677,7 +16862,7 @@ function saveSplitTransaction() {
     }
 
     let splitTotal = 0;
-    const transactions = [];
+    const transactionsData = [];
 
     rows.forEach(row => {
         const category = row.querySelector('select').value;
@@ -16687,16 +16872,14 @@ function saveSplitTransaction() {
             splitTotal += amount;
             const catInfo = EXPENSE_CATEGORIES[category] || EXPENSE_CATEGORIES.other;
 
-            transactions.push({
-                id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            transactionsData.push({
                 type: 'expense',
                 amount: amount,
                 category: category,
                 description: `${description} (${catInfo.name})`,
                 date: date,
                 method: 'card',
-                department: 'personal',
-                createdAt: new Date().toISOString()
+                department: 'personal'
             });
         }
     });
@@ -16707,25 +16890,37 @@ function saveSplitTransaction() {
         return;
     }
 
-    // Save all transactions
-    transactions.forEach(tx => {
-        state.transactions.push(tx);
-        state.stats.transactionsCount++;
-    });
-
-    saveStateAndSync();
-
     // Reset modal
     document.getElementById('splitTotalAmount').value = '';
     document.getElementById('splitDescription').value = '';
     document.getElementById('splitCategoriesList').innerHTML = '';
     document.getElementById('splitTotalCheck').textContent = '€0.00';
-
     closeModal('splitTransactionModal');
+
+    // Save all transactions to Supabase
+    const sb = getSupabase();
+    for (const txData of transactionsData) {
+        if (sb && currentUser) {
+            const dbTx = await saveTransactionToDB(txData);
+            if (dbTx) {
+                state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+            } else {
+                state.transactions.push({ ...txData, id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString() });
+            }
+        } else {
+            state.transactions.push({ ...txData, id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString() });
+        }
+        state.stats.transactionsCount++;
+    }
+
+    if (!sb || !currentUser) {
+        saveStateAndSync('transactions');
+    }
+
     renderFinancePage();
     renderHomePage();
     addXP(5);
-    showToast(`${transactions.length} spese create! +5 XP`, 'success');
+    showToast(`${transactionsData.length} spese create! +5 XP`, 'success');
     checkBudgetAlerts();
 }
 
