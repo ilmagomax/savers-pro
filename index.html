@@ -607,6 +607,9 @@
                 <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openModal('splitTransactionModal')">➗ Dividi Spesa</button>
             </div>
 
+            <!-- Wallets / Conti -->
+            <div id="walletsContainer"></div>
+
             <!-- Weekly Trend Chart -->
             <div class="card">
                 <div class="card-header">
@@ -2239,6 +2242,12 @@
                         <option value="other">📦 Altro</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Conto / Wallet</label>
+                    <select class="form-input form-select wallet-select" id="expenseWallet">
+                        <option value="">Seleziona conto...</option>
+                    </select>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Data</label>
@@ -2303,6 +2312,12 @@
                         <option value="gift">🎁 Regalo</option>
                         <option value="refund">↩️ Rimborso</option>
                         <option value="other">📦 Altro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Conto / Wallet</label>
+                    <select class="form-input form-select wallet-select" id="incomeWallet">
+                        <option value="">Seleziona conto...</option>
                     </select>
                 </div>
                 <div class="form-row">
@@ -4789,7 +4804,8 @@ async function ensureUserProfile() {
             loadGoalsFromSupabase(),
             loadNotesFromSupabase(),
             loadSaversLogsFromSupabase(),
-            loadMoneyGoalsFromSupabase()
+            loadMoneyGoalsFromSupabase(),
+            loadWalletsFromSupabase()
         ]);
 
         console.log('✅ All data loaded from Supabase');
@@ -5165,7 +5181,7 @@ async function loadTransactionsFromDB() {
             id: t.id, type: t.type, amount: parseFloat(t.amount), description: t.description,
             category: t.category, date: t.date, method: t.payment_method,
             department: t.department, recurring: t.is_recurring, createdAt: t.created_at,
-            _supabaseId: t.id
+            walletId: t.wallet_id, _supabaseId: t.id
         }));
     } catch (err) { console.error('Error in loadTransactionsFromDB:', err); return []; }
 }
@@ -5178,7 +5194,8 @@ async function saveTransactionToDB(tx) {
             user_id: currentUser.id, type: tx.type, amount: tx.amount,
             description: tx.description || null, category: tx.category,
             date: tx.date, department: tx.department || 'personal',
-            payment_method: tx.method || null, is_recurring: tx.recurring || false
+            payment_method: tx.method || null, is_recurring: tx.recurring || false,
+            wallet_id: tx.walletId || null
         }).select().single();
         if (error) { console.error('Error saving transaction:', error); return null; }
         return data;
@@ -5249,6 +5266,193 @@ async function migrateLocalTransactionsToSupabase() {
         if (dbTx) { tx._supabaseId = dbTx.id; tx.id = dbTx.id; migrated++; }
     }
     if (migrated > 0) { console.log(`✅ Migrated ${migrated} transactions`); showToast(`${migrated} transazioni migrate`, 'success'); }
+}
+
+// ============================================
+// WALLETS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+const WALLET_TYPES = {
+    cash: { icon: '💵', name: 'Contanti', color: '#10b981' },
+    bank: { icon: '🏦', name: 'Conto Bancario', color: '#3b82f6' },
+    card: { icon: '💳', name: 'Carta', color: '#8b5cf6' },
+    crypto: { icon: '₿', name: 'Crypto', color: '#f59e0b' },
+    investment: { icon: '📈', name: 'Investimenti', color: '#ec4899' },
+    savings: { icon: '🐷', name: 'Risparmi', color: '#06b6d4' }
+};
+
+async function loadWalletsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb
+            .from('wallets')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .eq('is_active', true)
+            .order('is_default', { ascending: false });
+        if (error) { console.error('Error loading wallets:', error); return []; }
+        return data.map(w => ({
+            id: w.id,
+            name: w.name,
+            icon: w.icon,
+            type: w.type,
+            color: w.color,
+            initialBalance: parseFloat(w.initial_balance) || 0,
+            currentBalance: parseFloat(w.current_balance) || 0,
+            currency: w.currency || 'EUR',
+            isDefault: w.is_default,
+            isActive: w.is_active,
+            includeInTotal: w.include_in_total,
+            bankName: w.bank_name,
+            accountNumber: w.account_number,
+            createdAt: w.created_at
+        }));
+    } catch (err) { console.error('Error in loadWalletsFromDB:', err); return []; }
+}
+
+async function saveWalletToDB(wallet) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('wallets').insert({
+            user_id: currentUser.id,
+            name: wallet.name,
+            icon: wallet.icon || WALLET_TYPES[wallet.type]?.icon || '💳',
+            type: wallet.type || 'bank',
+            color: wallet.color || WALLET_TYPES[wallet.type]?.color || '#6366f1',
+            initial_balance: wallet.initialBalance || 0,
+            current_balance: wallet.initialBalance || 0,
+            currency: wallet.currency || 'EUR',
+            is_default: wallet.isDefault || false,
+            include_in_total: wallet.includeInTotal !== false,
+            bank_name: wallet.bankName || null,
+            account_number: wallet.accountNumber || null
+        }).select().single();
+        if (error) { console.error('Error saving wallet:', error); return null; }
+        return data;
+    } catch (err) { console.error('Error in saveWalletToDB:', err); return null; }
+}
+
+async function updateWalletInDB(walletId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const dbUpdates = { updated_at: new Date().toISOString() };
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
+        if (updates.type !== undefined) dbUpdates.type = updates.type;
+        if (updates.color !== undefined) dbUpdates.color = updates.color;
+        if (updates.currentBalance !== undefined) dbUpdates.current_balance = updates.currentBalance;
+        if (updates.isDefault !== undefined) dbUpdates.is_default = updates.isDefault;
+        if (updates.includeInTotal !== undefined) dbUpdates.include_in_total = updates.includeInTotal;
+        if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+        if (updates.bankName !== undefined) dbUpdates.bank_name = updates.bankName;
+
+        const { error } = await sb.from('wallets').update(dbUpdates).eq('id', walletId).eq('user_id', currentUser.id);
+        if (error) { console.error('Error updating wallet:', error); return false; }
+        return true;
+    } catch (err) { console.error('Error in updateWalletInDB:', err); return false; }
+}
+
+async function deleteWalletFromDB(walletId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        // Soft delete - imposta is_active = false
+        const { error } = await sb.from('wallets').update({ is_active: false }).eq('id', walletId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function updateWalletBalance(walletId, amount, isIncome) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const newBalance = isIncome
+        ? wallet.currentBalance + amount
+        : wallet.currentBalance - amount;
+
+    wallet.currentBalance = newBalance;
+    await updateWalletInDB(walletId, { currentBalance: newBalance });
+}
+
+async function loadWalletsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        console.log('📥 Loading wallets from Supabase...');
+        const dbWallets = await loadWalletsFromDB();
+        if (dbWallets && dbWallets.length > 0) {
+            state.wallets = dbWallets;
+            console.log(`✅ Loaded ${dbWallets.length} wallets from Supabase`);
+        } else {
+            state.wallets = [];
+            // Crea wallet di default se non esistono
+            console.log('📝 Creating default wallet...');
+            const defaultWallet = await saveWalletToDB({
+                name: 'Contanti',
+                type: 'cash',
+                icon: '💵',
+                initialBalance: 0,
+                isDefault: true
+            });
+            if (defaultWallet) {
+                state.wallets = [{
+                    id: defaultWallet.id,
+                    name: defaultWallet.name,
+                    icon: defaultWallet.icon,
+                    type: defaultWallet.type,
+                    color: defaultWallet.color,
+                    initialBalance: 0,
+                    currentBalance: 0,
+                    currency: 'EUR',
+                    isDefault: true,
+                    isActive: true,
+                    includeInTotal: true
+                }];
+            }
+        }
+        // Aggiorna UI wallet selector se esiste
+        if (typeof populateWalletSelectors === 'function') {
+            populateWalletSelectors();
+        }
+    } catch (err) { console.error('Error loading wallets:', err); }
+}
+
+// Popola tutti i selettori wallet nella pagina
+function populateWalletSelectors() {
+    const selectors = document.querySelectorAll('.wallet-select');
+    const wallets = state.wallets || [];
+
+    selectors.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Seleziona conto...</option>';
+
+        wallets.forEach(w => {
+            const option = document.createElement('option');
+            option.value = w.id;
+            option.textContent = `${w.icon} ${w.name}`;
+            if (w.isDefault) option.textContent += ' (default)';
+            select.appendChild(option);
+        });
+
+        // Ripristina valore o seleziona default
+        if (currentValue) {
+            select.value = currentValue;
+        } else {
+            const defaultWallet = wallets.find(w => w.isDefault);
+            if (defaultWallet) select.value = defaultWallet.id;
+        }
+    });
+}
+
+// Calcola patrimonio totale da tutti i wallet
+function calculateTotalNetWorth() {
+    const wallets = state.wallets || [];
+    return wallets
+        .filter(w => w.includeInTotal && w.isActive)
+        .reduce((sum, w) => sum + (w.currentBalance || 0), 0);
 }
 
 // ============================================
@@ -16262,13 +16466,18 @@ function renderFinancePage() {
     if (!Array.isArray(state.moneyGoals)) {
         state.moneyGoals = [];
     }
+    if (!Array.isArray(state.wallets)) {
+        state.wallets = [];
+    }
 
+    renderWallets(); // Nuovo: renderizza wallet
     renderFinanceSummary();
     renderDailyBudget();
     renderMoneyGoals();
     renderBudget();
     renderTransactions();
     renderWeeklyTrendChart();
+    populateWalletSelectors(); // Popola selettori wallet nei form
 
     // Aggiorna anche i totali nella home se visibile
     updateHomeFinanceStats();
@@ -16290,6 +16499,382 @@ function updateHomeFinanceStats() {
     if (homeBalanceEl) homeBalanceEl.textContent = formatCurrency(balance);
     if (homeIncomeEl) homeIncomeEl.textContent = formatCurrency(income);
     if (homeExpenseEl) homeExpenseEl.textContent = formatCurrency(expenses);
+}
+
+// Renderizza sezione Wallet
+function renderWallets() {
+    const container = document.getElementById('walletsContainer');
+    if (!container) return;
+
+    const wallets = state.wallets || [];
+    const totalNetWorth = calculateTotalNetWorth();
+
+    if (wallets.length === 0) {
+        container.innerHTML = `
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0; font-size:1rem;">💳 I Miei Conti</h3>
+                    <button class="btn btn-sm btn-primary" onclick="openAddWalletModal()">+ Aggiungi</button>
+                </div>
+                <div class="card-body">
+                    <div class="empty-state" style="padding:20px; text-align:center;">
+                        <div style="font-size:2rem; margin-bottom:8px;">🏦</div>
+                        <div class="text-muted">Nessun conto configurato</div>
+                        <div class="text-muted text-xs mt-1">Aggiungi i tuoi conti per tracciare il patrimonio</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1rem;">💳 I Miei Conti</h3>
+                <button class="btn btn-sm btn-primary" onclick="openAddWalletModal()">+ Aggiungi</button>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <!-- Patrimonio Totale -->
+                <div style="background:linear-gradient(135deg, var(--primary), #8b5cf6); color:white; padding:16px; text-align:center;">
+                    <div style="font-size:0.8rem; opacity:0.9; margin-bottom:4px;">Patrimonio Totale</div>
+                    <div style="font-size:1.8rem; font-weight:700;">${formatCurrency(totalNetWorth)}</div>
+                </div>
+                <!-- Lista Wallet -->
+                <div style="padding:8px;">
+                    ${wallets.map(w => {
+                        const typeInfo = WALLET_TYPES[w.type] || WALLET_TYPES.bank;
+                        return `
+                            <div class="wallet-item" onclick="openWalletDetail('${w.id}')" style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-radius:8px; cursor:pointer; transition:background 0.2s;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                                <div style="display:flex; align-items:center; gap:12px;">
+                                    <div style="width:40px; height:40px; border-radius:10px; background:${w.color || typeInfo.color}20; display:flex; align-items:center; justify-content:center; font-size:1.3rem;">
+                                        ${w.icon || typeInfo.icon}
+                                    </div>
+                                    <div>
+                                        <div style="font-weight:600;">${w.name}</div>
+                                        <div style="font-size:0.75rem; color:var(--text-secondary);">${typeInfo.name}${w.isDefault ? ' • Default' : ''}</div>
+                                    </div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-weight:600; color:${w.currentBalance >= 0 ? 'var(--success)' : '#ef4444'};">${formatCurrency(w.currentBalance)}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Apri modal per aggiungere wallet
+function openAddWalletModal() {
+    const icons = ['💵', '🏦', '💳', '💰', '🐷', '₿', '📈', '🏠', '🎯'];
+
+    const content = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Nome Conto *</label>
+                <input type="text" id="walletName" placeholder="Es: Conto Principale"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Tipo</label>
+                <select id="walletType" onchange="updateWalletIcon()"
+                        style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+                    <option value="cash">💵 Contanti</option>
+                    <option value="bank">🏦 Conto Bancario</option>
+                    <option value="card">💳 Carta</option>
+                    <option value="savings">🐷 Risparmi</option>
+                    <option value="crypto">₿ Crypto</option>
+                    <option value="investment">📈 Investimenti</option>
+                </select>
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Icona</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    ${icons.map(icon => `
+                        <button type="button" onclick="selectWalletIcon('${icon}')"
+                                class="wallet-icon-btn"
+                                style="width:40px; height:40px; border-radius:8px; border:2px solid var(--border-color); background:var(--bg-secondary); font-size:1.2rem; cursor:pointer;">
+                            ${icon}
+                        </button>
+                    `).join('')}
+                </div>
+                <input type="hidden" id="walletIcon" value="💵">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Saldo Iniziale (€)</label>
+                <input type="number" id="walletInitialBalance" value="0" step="0.01"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Nome Banca (opzionale)</label>
+                <input type="text" id="walletBankName" placeholder="Es: Intesa Sanpaolo"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+                <button onclick="saveNewWallet()" class="btn btn-primary" style="flex:1;">Salva</button>
+            </div>
+        </div>
+    `;
+
+    showModal('🏦 Nuovo Conto', content);
+}
+
+function selectWalletIcon(icon) {
+    document.getElementById('walletIcon').value = icon;
+    document.querySelectorAll('#dynamicModalBody .wallet-icon-btn').forEach(btn => {
+        btn.style.borderColor = btn.textContent.trim() === icon ? 'var(--primary)' : 'var(--border-color)';
+    });
+}
+
+function updateWalletIcon() {
+    const type = document.getElementById('walletType').value;
+    const typeInfo = WALLET_TYPES[type];
+    if (typeInfo) {
+        document.getElementById('walletIcon').value = typeInfo.icon;
+        selectWalletIcon(typeInfo.icon);
+    }
+}
+
+async function saveNewWallet() {
+    const name = document.getElementById('walletName')?.value?.trim();
+    const type = document.getElementById('walletType')?.value || 'bank';
+    const icon = document.getElementById('walletIcon')?.value || WALLET_TYPES[type]?.icon || '💳';
+    const initialBalance = parseFloat(document.getElementById('walletInitialBalance')?.value) || 0;
+    const bankName = document.getElementById('walletBankName')?.value?.trim() || null;
+
+    if (!name) {
+        showToast('Inserisci un nome per il conto', 'error');
+        return;
+    }
+
+    const walletData = {
+        name, type, icon, initialBalance, bankName,
+        color: WALLET_TYPES[type]?.color || '#6366f1',
+        isDefault: (state.wallets || []).length === 0
+    };
+
+    const dbWallet = await saveWalletToDB(walletData);
+    if (dbWallet) {
+        state.wallets = state.wallets || [];
+        state.wallets.push({
+            id: dbWallet.id,
+            name: dbWallet.name,
+            icon: dbWallet.icon,
+            type: dbWallet.type,
+            color: dbWallet.color,
+            initialBalance: parseFloat(dbWallet.initial_balance) || 0,
+            currentBalance: parseFloat(dbWallet.current_balance) || 0,
+            currency: 'EUR',
+            isDefault: dbWallet.is_default,
+            isActive: true,
+            includeInTotal: true,
+            bankName: dbWallet.bank_name
+        });
+
+        closeModal('dynamicModal');
+        renderFinancePage();
+        showToast('Conto aggiunto!', 'success');
+    } else {
+        showToast('Errore nel salvataggio', 'error');
+    }
+}
+
+// Dettaglio wallet
+function openWalletDetail(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const typeInfo = WALLET_TYPES[wallet.type] || WALLET_TYPES.bank;
+
+    // Calcola transazioni di questo wallet
+    const walletTx = (state.transactions || []).filter(t => t.walletId === walletId);
+    const income = walletTx.filter(t => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const expenses = walletTx.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+
+    const content = `
+        <div style="text-align:center; margin-bottom:16px;">
+            <div style="width:60px; height:60px; border-radius:16px; background:${wallet.color || typeInfo.color}20; display:flex; align-items:center; justify-content:center; font-size:2rem; margin:0 auto 12px;">
+                ${wallet.icon || typeInfo.icon}
+            </div>
+            <h3 style="margin:0; font-size:1.25rem;">${wallet.name}</h3>
+            <div style="color:var(--text-secondary); font-size:0.85rem;">${typeInfo.name}${wallet.bankName ? ' • ' + wallet.bankName : ''}</div>
+        </div>
+        <div style="background:var(--bg-tertiary); border-radius:12px; padding:16px; margin-bottom:16px;">
+            <div style="text-align:center; margin-bottom:12px;">
+                <div style="color:var(--text-secondary); font-size:0.8rem;">Saldo Attuale</div>
+                <div style="font-size:1.8rem; font-weight:700; color:${wallet.currentBalance >= 0 ? 'var(--success)' : '#ef4444'};">${formatCurrency(wallet.currentBalance)}</div>
+            </div>
+            <div style="display:flex; justify-content:space-around; padding-top:12px; border-top:1px solid var(--border-color);">
+                <div style="text-align:center;">
+                    <div style="color:var(--text-secondary); font-size:0.75rem;">Entrate</div>
+                    <div style="font-weight:600; color:#10b981;">+${formatCurrency(income)}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="color:var(--text-secondary); font-size:0.75rem;">Uscite</div>
+                    <div style="font-weight:600; color:#ef4444;">-${formatCurrency(expenses)}</div>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <button onclick="editWallet('${wallet.id}')" class="btn btn-secondary" style="width:100%;">
+                ✏️ Modifica
+            </button>
+            <button onclick="adjustWalletBalance('${wallet.id}')" class="btn btn-secondary" style="width:100%;">
+                💰 Aggiusta Saldo
+            </button>
+            ${!wallet.isDefault ? `
+                <button onclick="confirmDeleteWallet('${wallet.id}')" class="btn btn-secondary" style="width:100%; color:#ef4444;">
+                    🗑️ Elimina
+                </button>
+            ` : ''}
+        </div>
+    `;
+
+    showModal(`${wallet.icon} ${wallet.name}`, content);
+}
+
+// Aggiusta saldo manualmente
+function adjustWalletBalance(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const content = `
+        <div style="margin-bottom:16px;">
+            <label style="display:block; margin-bottom:8px; font-weight:500;">Nuovo saldo</label>
+            <input type="number" id="adjustedBalance" value="${wallet.currentBalance}"
+                   style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:1.1rem;"
+                   step="0.01">
+        </div>
+        <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-bottom:16px; font-size:0.85rem; color:var(--text-secondary);">
+            Usa questa funzione per correggere il saldo del conto quando non corrisponde al saldo reale.
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+            <button onclick="saveAdjustedBalance('${wallet.id}')" class="btn btn-primary" style="flex:1;">Salva</button>
+        </div>
+    `;
+
+    showModal('💰 Aggiusta Saldo', content);
+}
+
+async function saveAdjustedBalance(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const newBalance = parseFloat(document.getElementById('adjustedBalance')?.value);
+    if (isNaN(newBalance)) {
+        showToast('Inserisci un importo valido', 'error');
+        return;
+    }
+
+    wallet.currentBalance = newBalance;
+    await updateWalletInDB(walletId, { currentBalance: newBalance });
+
+    closeModal('dynamicModal');
+    renderFinancePage();
+    showToast('Saldo aggiornato!', 'success');
+}
+
+// Elimina wallet
+function confirmDeleteWallet(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const content = `
+        <div style="text-align:center; padding:16px 0;">
+            <div style="font-size:3rem; margin-bottom:12px;">⚠️</div>
+            <p style="margin-bottom:16px;">Sei sicuro di voler eliminare il conto "<strong>${wallet.name}</strong>"?</p>
+            <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:24px;">Le transazioni associate non verranno eliminate.</p>
+            <div style="display:flex; gap:12px;">
+                <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+                <button onclick="deleteWallet('${wallet.id}')" class="btn" style="flex:1; background:#ef4444; color:white;">Elimina</button>
+            </div>
+        </div>
+    `;
+
+    showModal('Elimina Conto', content);
+}
+
+async function deleteWallet(walletId) {
+    const walletIndex = (state.wallets || []).findIndex(w => w.id === walletId);
+    if (walletIndex === -1) return;
+
+    state.wallets.splice(walletIndex, 1);
+    await deleteWalletFromDB(walletId);
+
+    closeModal('dynamicModal');
+    renderFinancePage();
+    showToast('Conto eliminato', 'success');
+}
+
+// Modifica wallet
+function editWallet(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const icons = ['💵', '🏦', '💳', '💰', '🐷', '₿', '📈', '🏠', '🎯'];
+
+    const content = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Nome</label>
+                <input type="text" id="editWalletName" value="${wallet.name}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Icona</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    ${icons.map(icon => `
+                        <button type="button" onclick="selectEditWalletIcon('${icon}')"
+                                class="wallet-icon-btn"
+                                style="width:40px; height:40px; border-radius:8px; border:2px solid ${wallet.icon === icon ? 'var(--primary)' : 'var(--border-color)'}; background:var(--bg-secondary); font-size:1.2rem; cursor:pointer;">
+                            ${icon}
+                        </button>
+                    `).join('')}
+                </div>
+                <input type="hidden" id="editWalletIcon" value="${wallet.icon}">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+                <button onclick="saveEditedWallet('${wallet.id}')" class="btn btn-primary" style="flex:1;">Salva</button>
+            </div>
+        </div>
+    `;
+
+    showModal('✏️ Modifica Conto', content);
+}
+
+function selectEditWalletIcon(icon) {
+    document.getElementById('editWalletIcon').value = icon;
+    document.querySelectorAll('#dynamicModalBody .wallet-icon-btn').forEach(btn => {
+        btn.style.borderColor = btn.textContent.trim() === icon ? 'var(--primary)' : 'var(--border-color)';
+    });
+}
+
+async function saveEditedWallet(walletId) {
+    const wallet = (state.wallets || []).find(w => w.id === walletId);
+    if (!wallet) return;
+
+    const name = document.getElementById('editWalletName')?.value?.trim();
+    const icon = document.getElementById('editWalletIcon')?.value;
+
+    if (!name) {
+        showToast('Inserisci un nome', 'error');
+        return;
+    }
+
+    wallet.name = name;
+    wallet.icon = icon;
+
+    await updateWalletInDB(walletId, { name, icon });
+
+    closeModal('dynamicModal');
+    renderFinancePage();
+    showToast('Conto aggiornato!', 'success');
 }
 
 function renderFinanceSummary() {
@@ -16975,6 +17560,8 @@ async function saveExpense() {
     const amount = parseFloat(document.getElementById('expenseAmount').value);
     if (!amount || amount <= 0) { showToast('Inserisci un importo valido', 'error'); return; }
 
+    const walletId = document.getElementById('expenseWallet')?.value || null;
+
     const txData = {
         type: 'expense', amount: amount,
         description: document.getElementById('expenseDesc').value,
@@ -16982,7 +17569,8 @@ async function saveExpense() {
         date: document.getElementById('expenseDate').value || state.today.date,
         method: document.getElementById('expenseMethod').value,
         recurring: document.getElementById('expenseRecurring').classList.contains('active'),
-        department: document.getElementById('expenseDepartment').value || 'personal'
+        department: document.getElementById('expenseDepartment').value || 'personal',
+        walletId: walletId
     };
 
     document.getElementById('expenseAmount').value = '';
@@ -16994,6 +17582,10 @@ async function saveExpense() {
         const dbTx = await saveTransactionToDB(txData);
         if (dbTx) {
             state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+            // Aggiorna saldo wallet
+            if (walletId) {
+                await updateWalletBalance(walletId, amount, false);
+            }
         } else {
             state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
             saveStateAndSync('transactions');
@@ -17014,13 +17606,16 @@ async function saveIncome() {
     const amount = parseFloat(document.getElementById('incomeAmount').value);
     if (!amount || amount <= 0) { showToast('Inserisci un importo valido', 'error'); return; }
 
+    const walletId = document.getElementById('incomeWallet')?.value || null;
+
     const txData = {
         type: 'income', amount: amount,
         description: document.getElementById('incomeDesc').value,
         category: document.getElementById('incomeCategory').value,
         date: document.getElementById('incomeDate').value || state.today.date,
         method: 'transfer',
-        department: document.getElementById('incomeDepartment').value || 'personal'
+        department: document.getElementById('incomeDepartment').value || 'personal',
+        walletId: walletId
     };
 
     document.getElementById('incomeAmount').value = '';
@@ -17032,6 +17627,10 @@ async function saveIncome() {
         const dbTx = await saveTransactionToDB(txData);
         if (dbTx) {
             state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+            // Aggiorna saldo wallet
+            if (walletId) {
+                await updateWalletBalance(walletId, amount, true);
+            }
         } else {
             state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
             saveStateAndSync('transactions');
