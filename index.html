@@ -17675,6 +17675,13 @@ function renderAgencyFeeWallet() {
                             ` : ''}
                         </div>
                     </div>
+                    ${currentData.totalPending > 0 ? `
+                        <div style="margin-top:10px;">
+                            <button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">
+                                📤 Segna Tutto come Consegnato
+                            </button>
+                        </div>
+                    ` : ''}
                 </div>
 
                 ${prevData.totalFees > 0 ? `
