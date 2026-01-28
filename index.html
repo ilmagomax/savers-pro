@@ -17323,12 +17323,23 @@ function renderEventFinanceSummaryFromComments(commentId) {
     // Verifica se l'utente è owner/admin
     const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
 
-    // Calcoli base
-    const income = financialComments.filter(c => c.type === 'income').reduce((s, c) => s + Math.abs(c.amount || 0), 0);
-    const expenses = financialComments.filter(c => c.type === 'expense').reduce((s, c) => s + Math.abs(c.amount || 0), 0);
+    // Calcoli base - Ritiro Saldo (incassoTotale dai commenti income)
+    const ritiroSaldo = financialComments
+        .filter(c => c.type === 'income')
+        .reduce((s, c) => s + (c.incomeTotal || c.amount || 0), 0);
 
-    // Calcola compensi agenzia totali per questo evento
-    const totalAgencyFees = financialComments
+    // Spese sostenute dall'animatore
+    const speseAnimatore = financialComments
+        .filter(c => c.type === 'expense')
+        .reduce((s, c) => s + Math.abs(c.amount || 0), 0);
+
+    // Guadagno animatore (dal campo specifico o calcolato)
+    const guadagnoAnimatore = financialComments
+        .filter(c => c.type === 'income')
+        .reduce((s, c) => s + (c.animatorEarning || (c.incomeTotal - (c.agencyFee || 0)) || 0), 0);
+
+    // Compensi Agenzia
+    const compensiAgenzia = financialComments
         .filter(c => c.type === 'income' && c.agencyFee > 0)
         .reduce((s, c) => s + (c.agencyFee || 0), 0);
 
@@ -17344,49 +17355,59 @@ function renderEventFinanceSummaryFromComments(commentId) {
 
     if (summaryContainer) {
         if (isOwnerOrAdmin) {
-            // VISTA PROPRIETARIO: Incasso, Spese (inclusi compensi animatori), Profitto Agenzia
-            const totalExpensesOwner = expenses + totalAgencyFees; // Spese + compensi animatori
-            const profitOwner = income - totalExpensesOwner;
+            // VISTA AGENZIA:
+            // Ritiro Saldo = €100
+            // Spese Totali = Guadagno animatore (€30) + Spese animatore (€30) = €60
+            // Profitto Agenzia = Ritiro Saldo - Spese Totali = €40
+            const speseTotaliAgenzia = guadagnoAnimatore + speseAnimatore;
+            const profittoAgenzia = ritiroSaldo - speseTotaliAgenzia;
 
             summaryContainer.innerHTML = `
                 <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-bottom:12px;">
                     <div style="font-weight:600; margin-bottom:10px;">💰 Riepilogo Finanziario <span style="font-size:0.7rem; color:var(--text-secondary);">(Vista Agenzia)</span></div>
                     <div style="display:flex; gap:10px; text-align:center;">
                         <div style="flex:1;">
-                            <div style="font-size:0.7rem; color:var(--text-secondary);">Incasso</div>
-                            <div style="font-weight:600; color:var(--success);">+€${income.toFixed(2)}</div>
+                            <div style="font-size:0.7rem; color:var(--text-secondary);">Ritiro Saldo</div>
+                            <div style="font-weight:600; color:var(--success);">€${ritiroSaldo.toFixed(2)}</div>
                         </div>
                         <div style="flex:1;">
                             <div style="font-size:0.7rem; color:var(--text-secondary);">Spese Totali</div>
-                            <div style="font-weight:600; color:var(--danger);">-€${totalExpensesOwner.toFixed(2)}</div>
-                            <div style="font-size:0.6rem; color:var(--text-secondary);">(€${expenses.toFixed(2)} + €${totalAgencyFees.toFixed(2)} animatori)</div>
+                            <div style="font-weight:600; color:var(--danger);">-€${speseTotaliAgenzia.toFixed(2)}</div>
+                            <div style="font-size:0.55rem; color:var(--text-secondary);">(€${guadagnoAnimatore.toFixed(2)} anim. + €${speseAnimatore.toFixed(2)} spese)</div>
                         </div>
                         <div style="flex:1;">
                             <div style="font-size:0.7rem; color:var(--text-secondary);">Profitto Agenzia</div>
-                            <div style="font-weight:600; color:${profitOwner >= 0 ? 'var(--success)' : 'var(--danger)'};">€${profitOwner.toFixed(2)}</div>
+                            <div style="font-weight:600; color:${profittoAgenzia >= 0 ? 'var(--success)' : 'var(--danger)'};">€${profittoAgenzia.toFixed(2)}</div>
                         </div>
                     </div>
                 </div>
             `;
         } else {
-            // VISTA ANIMATORE: Incasso, Spese, Guadagno personale
-            const profit = income - expenses;
+            // VISTA ANIMATORE:
+            // Ritiro Saldo = €100
+            // Spese = €30 (spese sostenute)
+            // Guadagno = €30
+            // Compensi Agenzia = €40
 
             summaryContainer.innerHTML = `
                 <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-bottom:12px;">
                     <div style="font-weight:600; margin-bottom:10px;">💰 Riepilogo Finanziario</div>
-                    <div style="display:flex; gap:10px; text-align:center;">
+                    <div style="display:flex; gap:6px; text-align:center;">
                         <div style="flex:1;">
-                            <div style="font-size:0.7rem; color:var(--text-secondary);">Incasso</div>
-                            <div style="font-weight:600; color:var(--success);">+€${income.toFixed(2)}</div>
+                            <div style="font-size:0.65rem; color:var(--text-secondary);">Ritiro Saldo</div>
+                            <div style="font-weight:600; color:var(--success); font-size:0.9rem;">€${ritiroSaldo.toFixed(2)}</div>
                         </div>
                         <div style="flex:1;">
-                            <div style="font-size:0.7rem; color:var(--text-secondary);">Spese</div>
-                            <div style="font-weight:600; color:var(--danger);">-€${expenses.toFixed(2)}</div>
+                            <div style="font-size:0.65rem; color:var(--text-secondary);">Spese</div>
+                            <div style="font-weight:600; color:var(--danger); font-size:0.9rem;">-€${speseAnimatore.toFixed(2)}</div>
                         </div>
                         <div style="flex:1;">
-                            <div style="font-size:0.7rem; color:var(--text-secondary);">Guadagno</div>
-                            <div style="font-weight:600; color:${profit >= 0 ? 'var(--success)' : 'var(--danger)'};">€${profit.toFixed(2)}</div>
+                            <div style="font-size:0.65rem; color:var(--text-secondary);">Guadagno</div>
+                            <div style="font-weight:600; color:#10b981; font-size:0.9rem;">€${guadagnoAnimatore.toFixed(2)}</div>
+                        </div>
+                        <div style="flex:1;">
+                            <div style="font-size:0.65rem; color:var(--text-secondary);">Compensi Ag.</div>
+                            <div style="font-weight:600; color:#f97316; font-size:0.9rem;">€${compensiAgenzia.toFixed(2)}</div>
                         </div>
                     </div>
                 </div>
@@ -19078,53 +19099,71 @@ function showEventFinanceDetail(eventId) {
     // Verifica se l'utente è owner/admin
     const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
 
-    // Calcola totali
-    const income = items.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0);
-    const expenses = items.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
+    // Calcoli base - Ritiro Saldo (incassoTotale dai commenti income)
+    const ritiroSaldo = financialComments
+        .filter(c => c.type === 'income')
+        .reduce((s, c) => s + (c.incomeTotal || c.amount || 0), 0);
 
-    // Calcola compensi agenzia totali per questo evento (dai commenti)
-    const totalAgencyFees = financialComments
+    // Spese sostenute dall'animatore
+    const speseAnimatore = financialComments
+        .filter(c => c.type === 'expense')
+        .reduce((s, c) => s + Math.abs(c.amount || 0), 0);
+
+    // Guadagno animatore (dal campo specifico o calcolato)
+    const guadagnoAnimatore = financialComments
+        .filter(c => c.type === 'income')
+        .reduce((s, c) => s + (c.animatorEarning || ((c.incomeTotal || c.amount || 0) - (c.agencyFee || 0))), 0);
+
+    // Compensi Agenzia
+    const compensiAgenzia = financialComments
         .filter(c => c.type === 'income' && c.agencyFee > 0)
         .reduce((s, c) => s + (c.agencyFee || 0), 0);
 
     // Calcoli differenziati per animatore/proprietario
     let summaryHtml;
     if (isOwnerOrAdmin) {
-        // VISTA PROPRIETARIO
-        const totalExpensesOwner = expenses + totalAgencyFees;
-        const profitOwner = income - totalExpensesOwner;
+        // VISTA AGENZIA:
+        // Ritiro Saldo = €100
+        // Spese Totali = Guadagno animatore + Spese animatore
+        // Profitto Agenzia = Ritiro Saldo - Spese Totali
+        const speseTotaliAgenzia = guadagnoAnimatore + speseAnimatore;
+        const profittoAgenzia = ritiroSaldo - speseTotaliAgenzia;
+
         summaryHtml = `
             <div style="display:flex; gap:12px; margin-bottom:16px;">
                 <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Incasso</div>
-                    <div style="font-weight:600; color:#10b981;">+${formatCurrency(income)}</div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">Ritiro Saldo</div>
+                    <div style="font-weight:600; color:#10b981;">${formatCurrency(ritiroSaldo)}</div>
                 </div>
                 <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
                     <div style="font-size:0.75rem; color:var(--text-secondary);">Spese Totali</div>
-                    <div style="font-weight:600; color:#ef4444;">-${formatCurrency(totalExpensesOwner)}</div>
-                    <div style="font-size:0.6rem; color:var(--text-secondary);">(€${expenses.toFixed(2)} + €${totalAgencyFees.toFixed(2)} anim.)</div>
+                    <div style="font-weight:600; color:#ef4444;">-${formatCurrency(speseTotaliAgenzia)}</div>
+                    <div style="font-size:0.55rem; color:var(--text-secondary);">(€${guadagnoAnimatore.toFixed(2)} anim. + €${speseAnimatore.toFixed(2)} spese)</div>
                 </div>
                 <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
                     <div style="font-size:0.75rem; color:var(--text-secondary);">Profitto Agenzia</div>
-                    <div style="font-weight:600; color:${profitOwner >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profitOwner)}</div>
+                    <div style="font-weight:600; color:${profittoAgenzia >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profittoAgenzia)}</div>
                 </div>
             </div>`;
     } else {
-        // VISTA ANIMATORE
-        const profit = income - expenses;
+        // VISTA ANIMATORE (4 colonne)
         summaryHtml = `
-            <div style="display:flex; gap:12px; margin-bottom:16px;">
-                <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Incasso</div>
-                    <div style="font-weight:600; color:#10b981;">+${formatCurrency(income)}</div>
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <div style="flex:1; background:var(--bg-tertiary); padding:8px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.65rem; color:var(--text-secondary);">Ritiro Saldo</div>
+                    <div style="font-weight:600; color:#10b981; font-size:0.9rem;">${formatCurrency(ritiroSaldo)}</div>
                 </div>
-                <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Spese</div>
-                    <div style="font-weight:600; color:#ef4444;">-${formatCurrency(expenses)}</div>
+                <div style="flex:1; background:var(--bg-tertiary); padding:8px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.65rem; color:var(--text-secondary);">Spese</div>
+                    <div style="font-weight:600; color:#ef4444; font-size:0.9rem;">-${formatCurrency(speseAnimatore)}</div>
                 </div>
-                <div style="flex:1; background:var(--bg-tertiary); padding:10px; border-radius:8px; text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-secondary);">Guadagno</div>
-                    <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
+                <div style="flex:1; background:var(--bg-tertiary); padding:8px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.65rem; color:var(--text-secondary);">Guadagno</div>
+                    <div style="font-weight:600; color:#10b981; font-size:0.9rem;">${formatCurrency(guadagnoAnimatore)}</div>
+                </div>
+                <div style="flex:1; background:var(--bg-tertiary); padding:8px; border-radius:8px; text-align:center;">
+                    <div style="font-size:0.65rem; color:var(--text-secondary);">Compensi Ag.</div>
+                    <div style="font-weight:600; color:#f97316; font-size:0.9rem;">${formatCurrency(compensiAgenzia)}</div>
                 </div>
             </div>`;
     }
