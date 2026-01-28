@@ -11015,13 +11015,31 @@ function formatDate(dateStr) {
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
+
     const todayStr = today.toISOString().split('T')[0];
     const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
+
     if (dateStr === todayStr) return 'Oggi';
     if (dateStr === yesterdayStr) return 'Ieri';
-    
+
+    return date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+}
+
+// Formatta data in formato compatto (es. "28 gen")
+function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const inputDate = dateStr.split('T')[0];
+
+    if (inputDate === todayStr) return 'Oggi';
+    if (inputDate === yesterdayStr) return 'Ieri';
+
     return date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
 }
 
@@ -17658,13 +17676,19 @@ function renderEventsDashboard() {
                 <div style="max-height:300px; overflow-y:auto;">
                     ${events.map(e => {
                         const profit = e.income - e.expenses;
+                        const dateStr = e.date ? formatDateShort(e.date) : '';
                         return `
                             <div class="event-finance-item" onclick="showEventFinanceDetail('${e.eventId}')"
                                  style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--border-color); cursor:pointer; transition:background 0.2s;"
                                  onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
-                                <div>
-                                    <div style="font-weight:600;">${e.eventName}</div>
-                                    <div style="font-size:0.75rem; color:var(--text-secondary);">${formatDate(e.date)} • ${e.items.length} voci</div>
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <div style="min-width:50px; text-align:center; padding:4px 8px; background:var(--bg-tertiary); border-radius:6px;">
+                                        <div style="font-size:0.7rem; color:var(--text-secondary);">${dateStr}</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight:600;">${e.eventName}</div>
+                                        <div style="font-size:0.75rem; color:var(--text-secondary);">${e.items.length} voci</div>
+                                    </div>
                                 </div>
                                 <div style="text-align:right;">
                                     <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
