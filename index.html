@@ -4666,21 +4666,15 @@ async function ensureUserProfile() {
 
     try {
         console.log('📡 Starting profile query for:', currentUser.id);
-        // Query con timeout di 15s per connessioni lente
-        const queryPromise = sb.from('profiles').select('*').eq('id', currentUser.id).single();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000));
 
-        let profile, error;
-        try {
-            const result = await Promise.race([queryPromise, timeoutPromise]);
-            profile = result.data;
-            error = result.error;
-        } catch (timeoutErr) {
-            console.warn('⏱️ Supabase timeout, using local data');
-            return;
-        }
+        // Query diretta senza Promise.race per evitare race conditions
+        const { data: profile, error } = await sb
+            .from('profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .single();
 
-        console.log('📡 Profile query result:', { profile: !!profile, error });
+        console.log('📡 Profile query completed:', { hasProfile: !!profile, error: error?.message });
 
         // Carica organization separatamente
         let organization = null;
