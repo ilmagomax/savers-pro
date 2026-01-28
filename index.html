@@ -17520,6 +17520,13 @@ async function saveEventTransaction(eventId, isGoogle, eventDate) {
     addXP(5);
 }
 
+// Stato filtro eventi finanziari
+let eventsDashboardFilter = {
+    startDate: null,
+    endDate: null,
+    month: new Date().toISOString().slice(0, 7) // YYYY-MM corrente
+};
+
 // Renderizza dashboard eventi nella pagina Finance
 function renderEventsDashboard() {
     const container = document.getElementById('eventsDashboardContainer');
@@ -17623,86 +17630,204 @@ function renderEventsDashboard() {
         }
     });
 
-    // Se non ci sono dati
-    if (Object.keys(eventGroups).length === 0) {
-        container.innerHTML = `
-            <div class="card" style="margin-bottom:16px;">
-                <div class="card-header">
-                    <div class="card-title"><span class="card-title-icon">🎭</span> Feste & Eventi</div>
+    // Converti in array
+    let allEvents = Object.values(eventGroups);
+
+    // Applica filtro date
+    let filteredEvents = allEvents.filter(e => {
+        if (!e.date) return false;
+        const eventDate = e.date.split('T')[0];
+
+        // Se c'è un range custom
+        if (eventsDashboardFilter.startDate && eventsDashboardFilter.endDate) {
+            return eventDate >= eventsDashboardFilter.startDate && eventDate <= eventsDashboardFilter.endDate;
+        }
+
+        // Altrimenti filtra per mese
+        if (eventsDashboardFilter.month) {
+            return eventDate.startsWith(eventsDashboardFilter.month);
+        }
+
+        return true;
+    });
+
+    // Ordina per data (più recenti prima)
+    filteredEvents.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Calcola totali (filtrati)
+    const totalIncome = filteredEvents.reduce((s, e) => s + e.income, 0);
+    const totalExpenses = filteredEvents.reduce((s, e) => s + e.expenses, 0);
+    const totalProfit = totalIncome - totalExpenses;
+    const eventsCount = filteredEvents.length;
+
+    // Genera opzioni mesi disponibili
+    const availableMonths = [...new Set(allEvents.map(e => e.date?.slice(0, 7)).filter(Boolean))].sort().reverse();
+    const currentMonth = eventsDashboardFilter.month || new Date().toISOString().slice(0, 7);
+
+    // Label periodo
+    let periodLabel = '';
+    if (eventsDashboardFilter.startDate && eventsDashboardFilter.endDate) {
+        periodLabel = `${formatDateShort(eventsDashboardFilter.startDate)} - ${formatDateShort(eventsDashboardFilter.endDate)}`;
+    } else {
+        const [year, month] = currentMonth.split('-');
+        const monthNames = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                           'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+        periodLabel = `${monthNames[parseInt(month) - 1]} ${year}`;
+    }
+
+    container.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div class="card-title"><span class="card-title-icon">🎭</span> Feste & Eventi</div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <select id="eventsDashboardMonth" onchange="changeEventsDashboardMonth(this.value)"
+                            style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:0.8rem;">
+                        ${availableMonths.map(m => {
+                            const [y, mo] = m.split('-');
+                            const monthNames = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+                            return `<option value="${m}" ${m === currentMonth ? 'selected' : ''}>${monthNames[parseInt(mo) - 1]} ${y}</option>`;
+                        }).join('')}
+                        <option value="custom" ${eventsDashboardFilter.startDate ? 'selected' : ''}>📅 Personalizzato...</option>
+                    </select>
+                    <span class="badge">${eventsCount} eventi</span>
                 </div>
+            </div>
+
+            ${allEvents.length === 0 ? `
                 <div class="empty-state" style="padding:20px; text-align:center;">
                     <div style="font-size:2rem; margin-bottom:8px;">🎉</div>
                     <div class="text-muted">Nessuna festa registrata</div>
                     <div class="text-muted text-xs mt-1">Aggiungi incassi e spese dai commenti degli eventi</div>
                 </div>
-            </div>
-        `;
-        return;
+            ` : `
+                <div class="card-body" style="padding:0;">
+                    <!-- Riepilogo periodo -->
+                    <div style="background:var(--bg-secondary); padding:8px 12px; border-bottom:1px solid var(--border-color);">
+                        <div style="font-size:0.75rem; color:var(--text-secondary); text-align:center;">📊 ${periodLabel}</div>
+                    </div>
+
+                    <!-- Riepilogo Totali -->
+                    <div style="display:flex; background:var(--bg-tertiary); padding:12px;">
+                        <div style="flex:1; text-align:center; border-right:1px solid var(--border-color);">
+                            <div style="font-size:0.7rem; color:var(--text-secondary);">Guadagnato</div>
+                            <div style="font-weight:700; color:#10b981;">${formatCurrency(totalIncome)}</div>
+                        </div>
+                        <div style="flex:1; text-align:center; border-right:1px solid var(--border-color);">
+                            <div style="font-size:0.7rem; color:var(--text-secondary);">Speso</div>
+                            <div style="font-weight:700; color:#ef4444;">${formatCurrency(totalExpenses)}</div>
+                        </div>
+                        <div style="flex:1; text-align:center;">
+                            <div style="font-size:0.7rem; color:var(--text-secondary);">Profitto</div>
+                            <div style="font-weight:700; color:${totalProfit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(totalProfit)}</div>
+                        </div>
+                    </div>
+
+                    ${filteredEvents.length === 0 ? `
+                        <div style="padding:20px; text-align:center;">
+                            <div class="text-muted">Nessun evento in questo periodo</div>
+                        </div>
+                    ` : `
+                        <!-- Lista Eventi -->
+                        <div style="max-height:300px; overflow-y:auto;">
+                            ${filteredEvents.map(e => {
+                                const profit = e.income - e.expenses;
+                                const dateStr = e.date ? formatDateShort(e.date) : '';
+                                return `
+                                    <div class="event-finance-item" onclick="showEventFinanceDetail('${e.eventId}')"
+                                         style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--border-color); cursor:pointer; transition:background 0.2s;"
+                                         onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
+                                        <div style="display:flex; align-items:center; gap:10px;">
+                                            <div style="min-width:50px; text-align:center; padding:4px 8px; background:var(--bg-tertiary); border-radius:6px;">
+                                                <div style="font-size:0.7rem; color:var(--text-secondary);">${dateStr}</div>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight:600;">${e.eventName}</div>
+                                                <div style="font-size:0.75rem; color:var(--text-secondary);">${e.items.length} voci</div>
+                                            </div>
+                                        </div>
+                                        <div style="text-align:right;">
+                                            <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
+                                            <div style="font-size:0.7rem; color:var(--text-secondary);">
+                                                +${formatCurrency(e.income)} / -${formatCurrency(e.expenses)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `}
+                </div>
+            `}
+        </div>
+    `;
+}
+
+// Cambia mese nella dashboard eventi
+function changeEventsDashboardMonth(value) {
+    if (value === 'custom') {
+        openEventsDashboardDatePicker();
+    } else {
+        eventsDashboardFilter.month = value;
+        eventsDashboardFilter.startDate = null;
+        eventsDashboardFilter.endDate = null;
+        renderEventsDashboard();
     }
+}
 
-    // Converti in array e ordina per data (più recenti prima)
-    const events = Object.values(eventGroups).sort((a, b) => new Date(b.date) - new Date(a.date));
+// Apre il selettore date personalizzato
+function openEventsDashboardDatePicker() {
+    const today = new Date().toISOString().split('T')[0];
+    const firstOfMonth = today.slice(0, 8) + '01';
 
-    // Calcola totali
-    const totalIncome = events.reduce((s, e) => s + e.income, 0);
-    const totalExpenses = events.reduce((s, e) => s + e.expenses, 0);
-    const totalProfit = totalIncome - totalExpenses;
-    const eventsCount = events.length;
-
-    container.innerHTML = `
-        <div class="card" style="margin-bottom:16px;">
-            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="card-title"><span class="card-title-icon">🎭</span> Feste & Eventi</div>
-                <span class="badge">${eventsCount} eventi</span>
+    const content = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">📅 Data Inizio</label>
+                <input type="date" id="eventsDateStart" value="${eventsDashboardFilter.startDate || firstOfMonth}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
             </div>
-            <div class="card-body" style="padding:0;">
-                <!-- Riepilogo Totali -->
-                <div style="display:flex; background:var(--bg-tertiary); padding:12px;">
-                    <div style="flex:1; text-align:center; border-right:1px solid var(--border-color);">
-                        <div style="font-size:0.7rem; color:var(--text-secondary);">Guadagnato</div>
-                        <div style="font-weight:700; color:#10b981;">${formatCurrency(totalIncome)}</div>
-                    </div>
-                    <div style="flex:1; text-align:center; border-right:1px solid var(--border-color);">
-                        <div style="font-size:0.7rem; color:var(--text-secondary);">Speso</div>
-                        <div style="font-weight:700; color:#ef4444;">${formatCurrency(totalExpenses)}</div>
-                    </div>
-                    <div style="flex:1; text-align:center;">
-                        <div style="font-size:0.7rem; color:var(--text-secondary);">Profitto</div>
-                        <div style="font-weight:700; color:${totalProfit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(totalProfit)}</div>
-                    </div>
-                </div>
-
-                <!-- Lista Eventi -->
-                <div style="max-height:300px; overflow-y:auto;">
-                    ${events.map(e => {
-                        const profit = e.income - e.expenses;
-                        const dateStr = e.date ? formatDateShort(e.date) : '';
-                        return `
-                            <div class="event-finance-item" onclick="showEventFinanceDetail('${e.eventId}')"
-                                 style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--border-color); cursor:pointer; transition:background 0.2s;"
-                                 onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
-                                <div style="display:flex; align-items:center; gap:10px;">
-                                    <div style="min-width:50px; text-align:center; padding:4px 8px; background:var(--bg-tertiary); border-radius:6px;">
-                                        <div style="font-size:0.7rem; color:var(--text-secondary);">${dateStr}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-weight:600;">${e.eventName}</div>
-                                        <div style="font-size:0.75rem; color:var(--text-secondary);">${e.items.length} voci</div>
-                                    </div>
-                                </div>
-                                <div style="text-align:right;">
-                                    <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
-                                    <div style="font-size:0.7rem; color:var(--text-secondary);">
-                                        +${formatCurrency(e.income)} / -${formatCurrency(e.expenses)}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">📅 Data Fine</label>
+                <input type="date" id="eventsDateEnd" value="${eventsDashboardFilter.endDate || today}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-secondary" onclick="resetEventsDashboardFilter()" style="flex:1;">Reset</button>
+                <button class="btn btn-primary" onclick="applyEventsDashboardDateFilter()" style="flex:1;">Applica</button>
             </div>
         </div>
     `;
+
+    showModal('📅 Seleziona Periodo', content);
+}
+
+// Applica filtro date personalizzato
+function applyEventsDashboardDateFilter() {
+    const startDate = document.getElementById('eventsDateStart')?.value;
+    const endDate = document.getElementById('eventsDateEnd')?.value;
+
+    if (startDate && endDate) {
+        if (startDate > endDate) {
+            showToast('La data di inizio deve essere prima della data fine', 'error');
+            return;
+        }
+        eventsDashboardFilter.startDate = startDate;
+        eventsDashboardFilter.endDate = endDate;
+        eventsDashboardFilter.month = null;
+        closeModal('dynamicModal');
+        renderEventsDashboard();
+    } else {
+        showToast('Seleziona entrambe le date', 'error');
+    }
+}
+
+// Reset filtro al mese corrente
+function resetEventsDashboardFilter() {
+    eventsDashboardFilter.month = new Date().toISOString().slice(0, 7);
+    eventsDashboardFilter.startDate = null;
+    eventsDashboardFilter.endDate = null;
+    closeModal('dynamicModal');
+    renderEventsDashboard();
 }
 
 // Mostra dettaglio finanziario per evento (transazioni + commenti finanziari)
