@@ -18280,21 +18280,22 @@ async function saveAgencyFeeModification(commentId) {
     showToast('Compenso modificato! In attesa di conferma animatore.', 'success');
 }
 
-// Animatore accetta modifica owner (singolo item)
+// Animatore accetta modifica owner (singolo item) - torna a ATTESA OWNER per conferma finale
 async function acceptSingleModification(commentId) {
     const sb = getSupabase();
     const now = new Date().toISOString();
-    const myEmail = state.profile?.email;
+    const myName = state.profile?.name || state.profile?.stageName || 'Animatore';
 
     // Trova il commento
     for (const eventId of Object.keys(state.eventComments || {})) {
         const comments = state.eventComments[eventId] || [];
         const c = comments.find(c => c.id === commentId);
         if (c) {
+            // Accetta la modifica ma NON conferma - torna a ATTESA OWNER
             c.agencyFeeAnimatorAccepted = true;
             c.agencyFeeAnimatorAcceptedAt = now;
-            c.agencyFeeConfirmed = true;
-            c.agencyFeeConfirmedAt = now;
+            c.agencyFeeModifiedByOwner = false; // Reset flag modifica
+            // NON settare agencyFeeConfirmed! Resta in attesa owner
 
             if (sb && currentUser) {
                 try {
@@ -18303,10 +18304,34 @@ async function acceptSingleModification(commentId) {
                         .update({
                             agency_fee_animator_accepted: true,
                             agency_fee_animator_accepted_at: now,
-                            agency_fee_confirmed: true,
-                            agency_fee_confirmed_at: now
+                            agency_fee_modified_by_owner: false
                         })
                         .eq('id', commentId);
+
+                    // Notifica owner che animatore ha accettato
+                    const orgId = state.organizationId;
+                    if (orgId) {
+                        const { data: owners } = await sb
+                            .from('profiles')
+                            .select('id, email')
+                            .eq('organization_id', orgId)
+                            .eq('org_role', 'owner');
+
+                        for (const owner of (owners || [])) {
+                            await sb
+                                .from('notifications')
+                                .insert({
+                                    user_id: owner.id,
+                                    organization_id: orgId,
+                                    type: 'system',
+                                    title: '✅ Modifica Accettata',
+                                    body: `${myName} ha accettato la modifica del compenso (€${c.agencyFee.toFixed(2)}). Conferma la ricezione.`,
+                                    entity_type: 'agency_fee_accepted',
+                                    link: '/finance',
+                                    actor_id: currentUser.id
+                                });
+                        }
+                    }
                 } catch (err) {
                     console.error('Errore accettazione:', err);
                 }
@@ -18317,7 +18342,7 @@ async function acceptSingleModification(commentId) {
 
     saveStateAndSync();
     openAgencyFeeDetail();
-    showToast('Modifica accettata!', 'success');
+    showToast('Modifica accettata! In attesa di conferma dal proprietario.', 'success');
 }
 
 // Animatore rifiuta modifica owner (singolo item) - torna a PENDENTE, deve ri-consegnare
@@ -18367,12 +18392,14 @@ async function rejectSingleModification(commentId) {
     showToast('Modifica rifiutata. Dovrai segnare nuovamente come consegnato.', 'warning');
 }
 
-// Animatore accetta tutte le modifiche owner
+// Animatore accetta tutte le modifiche owner - torna a ATTESA OWNER per conferma finale
 async function acceptOwnerModification(yearMonth) {
     const sb = getSupabase();
     const now = new Date().toISOString();
     const myEmail = state.profile?.email?.toLowerCase();
+    const myName = state.profile?.name || state.profile?.stageName || 'Animatore';
     let count = 0;
+    let totalAmount = 0;
 
     for (const eventId of Object.keys(state.eventComments || {})) {
         const comments = state.eventComments[eventId] || [];
@@ -18384,11 +18411,13 @@ async function acceptOwnerModification(yearMonth) {
                 const commentDate = c.createdAt?.split('T')[0];
                 if (yearMonth && commentDate?.slice(0, 7) !== yearMonth) continue;
 
+                // Accetta la modifica ma NON conferma - torna a ATTESA OWNER
                 c.agencyFeeAnimatorAccepted = true;
                 c.agencyFeeAnimatorAcceptedAt = now;
-                c.agencyFeeConfirmed = true;
-                c.agencyFeeConfirmedAt = now;
+                c.agencyFeeModifiedByOwner = false; // Reset flag modifica
+                // NON settare agencyFeeConfirmed!
                 count++;
+                totalAmount += c.agencyFee;
 
                 if (sb && currentUser && c.id) {
                     try {
@@ -18397,8 +18426,7 @@ async function acceptOwnerModification(yearMonth) {
                             .update({
                                 agency_fee_animator_accepted: true,
                                 agency_fee_animator_accepted_at: now,
-                                agency_fee_confirmed: true,
-                                agency_fee_confirmed_at: now
+                                agency_fee_modified_by_owner: false
                             })
                             .eq('id', c.id);
                     } catch (err) {
@@ -18409,10 +18437,41 @@ async function acceptOwnerModification(yearMonth) {
         }
     }
 
+    // Notifica owner che animatore ha accettato
+    if (sb && currentUser && count > 0) {
+        try {
+            const orgId = state.organizationId;
+            if (orgId) {
+                const { data: owners } = await sb
+                    .from('profiles')
+                    .select('id, email')
+                    .eq('organization_id', orgId)
+                    .eq('org_role', 'owner');
+
+                for (const owner of (owners || [])) {
+                    await sb
+                        .from('notifications')
+                        .insert({
+                            user_id: owner.id,
+                            organization_id: orgId,
+                            type: 'system',
+                            title: '✅ Modifiche Accettate',
+                            body: `${myName} ha accettato le modifiche ai compensi (€${totalAmount.toFixed(2)}). Conferma la ricezione.`,
+                            entity_type: 'agency_fee_accepted',
+                            link: '/finance',
+                            actor_id: currentUser.id
+                        });
+                }
+            }
+        } catch (err) {
+            console.error('Errore notifica:', err);
+        }
+    }
+
     saveStateAndSync();
     closeModal('dynamicModal');
     renderAgencyFeeWallet();
-    showToast(`${count} modifiche accettate!`, 'success');
+    showToast(`${count} modifiche accettate! In attesa di conferma dal proprietario.`, 'success');
 }
 
 // Animatore rifiuta tutte le modifiche owner - torna a PENDENTE, deve ri-consegnare
