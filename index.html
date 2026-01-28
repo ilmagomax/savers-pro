@@ -1772,6 +1772,33 @@
                 <button class="btn btn-danger btn-block" onclick="confirmClearData()">🗑️ Cancella Tutto</button>
             </div>
 
+            <!-- Segnala Bug -->
+            <div class="card">
+                <div class="card-title mb-2">🐛 Segnala un Bug</div>
+                <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">
+                    Hai trovato un problema? Aiutaci a migliorare l'app!
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Descrizione del problema *</label>
+                    <textarea id="bugReportDescription" class="form-input" rows="3" placeholder="Descrivi cosa è successo, cosa stavi facendo e cosa ti aspettavi..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Screenshot (opzionale)</label>
+                    <input type="file" id="bugReportScreenshot" accept="image/*" class="form-input" style="padding:8px;">
+                    <div id="bugScreenshotPreview" style="margin-top:8px;"></div>
+                </div>
+                <div class="toggle-row" style="padding:8px 0;">
+                    <div>
+                        <div class="toggle-label">Allega log di sistema</div>
+                        <div class="toggle-desc">Include info tecniche per debug</div>
+                    </div>
+                    <div class="toggle-switch active" id="bugReportLogsToggle" onclick="toggleBugReportLogs()"></div>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="sendBugReport()">
+                    📧 Invia Segnalazione
+                </button>
+            </div>
+
             <!-- About & Credits -->
             <div class="card">
                 <div class="card-title mb-2" style="text-align:center;">✨ Credits</div>
@@ -3915,8 +3942,20 @@
                     <div style="font-weight:600;margin-bottom:12px;">💬 Commenti</div>
                     <div id="eventCommentsList"></div>
                     <div class="comment-input-wrapper" id="eventCommentInputWrapper">
-                        <input type="text" class="comment-input" id="eventCommentInput" placeholder="Scrivi... @ per menzionare" oninput="checkEventMentionAutocomplete(this)" onkeydown="handleEventMentionKeydown(event)" onfocus="scrollInputIntoView(this)">
-                        <button class="btn btn-primary btn-sm comment-send-btn" onclick="addEventComment()">Invia</button>
+                        <!-- Selettore tipo commento -->
+                        <div style="display:flex; gap:8px; margin-bottom:8px;">
+                            <button type="button" class="btn btn-sm comment-type-btn active" id="commentTypeNormal" onclick="setEventCommentType('normal')">💬 Note</button>
+                            <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeIncome" onclick="setEventCommentType('income')">💵 Incasso</button>
+                            <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeExpense" onclick="setEventCommentType('expense')">💸 Spesa</button>
+                        </div>
+                        <!-- Campo importo (visibile solo per tipo finanziario) -->
+                        <div id="eventCommentAmountWrapper" style="display:none; margin-bottom:8px;">
+                            <input type="number" step="0.01" min="0" class="form-input" id="eventCommentAmount" placeholder="Importo €" style="font-size:0.9rem;">
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" class="comment-input" id="eventCommentInput" placeholder="Scrivi... @ per menzionare" oninput="checkEventMentionAutocomplete(this)" onkeydown="handleEventMentionKeydown(event)" onfocus="scrollInputIntoView(this)" style="flex:1;">
+                            <button class="btn btn-primary btn-sm comment-send-btn" onclick="addEventComment()">Invia</button>
+                        </div>
                         <!-- Dropdown autocomplete menzioni eventi -->
                         <div id="eventMentionAutocomplete" class="mention-autocomplete"></div>
                     </div>
@@ -14641,6 +14680,192 @@ function confirmClearData() {
 }
 
 // ============================================
+// BUG REPORT - Segnalazione Bug via Email
+// ============================================
+
+let bugReportIncludeLogs = true;
+let bugReportScreenshotData = null;
+
+function toggleBugReportLogs() {
+    bugReportIncludeLogs = !bugReportIncludeLogs;
+    const toggle = document.getElementById('bugReportLogsToggle');
+    if (toggle) {
+        toggle.classList.toggle('active', bugReportIncludeLogs);
+    }
+}
+
+// Preview screenshot selezionato
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'bugReportScreenshot') {
+        const file = e.target.files[0];
+        const previewContainer = document.getElementById('bugScreenshotPreview');
+
+        if (file && previewContainer) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                bugReportScreenshotData = event.target.result;
+                previewContainer.innerHTML = `
+                    <div style="position:relative; display:inline-block;">
+                        <img src="${bugReportScreenshotData}" style="max-width:100%; max-height:150px; border-radius:8px; border:1px solid var(--border-color);">
+                        <button onclick="removeBugScreenshot()" style="position:absolute; top:-8px; right:-8px; background:var(--danger); color:white; border:none; border-radius:50%; width:24px; height:24px; cursor:pointer;">✕</button>
+                    </div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+});
+
+function removeBugScreenshot() {
+    bugReportScreenshotData = null;
+    const input = document.getElementById('bugReportScreenshot');
+    const preview = document.getElementById('bugScreenshotPreview');
+    if (input) input.value = '';
+    if (preview) preview.innerHTML = '';
+}
+
+// Genera log di sistema per debug
+function generateSystemLogs() {
+    const logs = {
+        timestamp: new Date().toISOString(),
+        app: {
+            version: 'v4.0.1',
+            name: 'Mago Max S.A.V.E.R.S.'
+        },
+        user: {
+            email: state.profile?.email || 'non loggato',
+            profession: state.profile?.profession || 'non impostata',
+            level: Math.floor((state.stats?.totalXP || 0) / 200) + 1
+        },
+        device: {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            language: navigator.language,
+            screenSize: `${window.screen.width}x${window.screen.height}`,
+            viewportSize: `${window.innerWidth}x${window.innerHeight}`,
+            online: navigator.onLine,
+            cookiesEnabled: navigator.cookieEnabled
+        },
+        state: {
+            habitsCount: state.habits?.length || 0,
+            tasksCount: state.tasks?.length || 0,
+            transactionsCount: state.transactions?.length || 0,
+            goalsCount: state.goals?.length || 0,
+            notesCount: state.notes?.length || 0,
+            booksCount: state.books?.length || 0,
+            moneyGoalsCount: state.moneyGoals?.length || 0,
+            walletsCount: state.wallets?.length || 0,
+            teamsCount: state.teams?.length || 0,
+            calendarEventsCount: state.calendarEvents?.length || 0
+        },
+        auth: {
+            isLoggedIn: isLoggedIn,
+            hasSupabaseSession: !!getSupabase()?.auth?.getSession,
+            hasGoogleCalendar: !!(state.calendarEvents?.length > 0)
+        },
+        errors: getRecentConsoleLogs()
+    };
+
+    return logs;
+}
+
+// Recupera ultimi log console (errori)
+function getRecentConsoleLogs() {
+    // Se abbiamo intercettato errori, li ritorniamo
+    if (window._recentErrors && window._recentErrors.length > 0) {
+        return window._recentErrors.slice(-10);
+    }
+    return ['Nessun errore recente registrato'];
+}
+
+// Intercetta errori per il bug report
+(function() {
+    window._recentErrors = [];
+    const originalError = console.error;
+    console.error = function(...args) {
+        window._recentErrors.push({
+            time: new Date().toISOString(),
+            message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+        });
+        if (window._recentErrors.length > 50) {
+            window._recentErrors.shift();
+        }
+        originalError.apply(console, args);
+    };
+})();
+
+// Invia segnalazione bug via mailto
+function sendBugReport() {
+    const description = document.getElementById('bugReportDescription')?.value?.trim();
+
+    if (!description) {
+        showToast('Inserisci una descrizione del problema', 'error');
+        return;
+    }
+
+    // Prepara corpo email
+    let emailBody = `🐛 SEGNALAZIONE BUG - Mago Max S.A.V.E.R.S.\n\n`;
+    emailBody += `📅 Data: ${new Date().toLocaleString('it-IT')}\n\n`;
+    emailBody += `📝 DESCRIZIONE PROBLEMA:\n${description}\n\n`;
+
+    if (bugReportIncludeLogs) {
+        const logs = generateSystemLogs();
+        emailBody += `\n📊 LOG DI SISTEMA:\n`;
+        emailBody += `──────────────────────────────\n`;
+        emailBody += `App: ${logs.app.name} ${logs.app.version}\n`;
+        emailBody += `Utente: ${logs.user.email} (Livello ${logs.user.level})\n`;
+        emailBody += `Professione: ${logs.user.profession}\n\n`;
+        emailBody += `Dispositivo: ${logs.device.platform}\n`;
+        emailBody += `Browser: ${logs.device.userAgent.split(') ')[0]})\n`;
+        emailBody += `Schermo: ${logs.device.screenSize}\n`;
+        emailBody += `Viewport: ${logs.device.viewportSize}\n`;
+        emailBody += `Online: ${logs.device.online ? 'Sì' : 'No'}\n\n`;
+        emailBody += `Dati App:\n`;
+        emailBody += `- Habits: ${logs.state.habitsCount}\n`;
+        emailBody += `- Tasks: ${logs.state.tasksCount}\n`;
+        emailBody += `- Transactions: ${logs.state.transactionsCount}\n`;
+        emailBody += `- Events Calendar: ${logs.state.calendarEventsCount}\n`;
+        emailBody += `- Teams: ${logs.state.teamsCount}\n\n`;
+        emailBody += `Auth: Login=${logs.auth.isLoggedIn}, Calendar=${logs.auth.hasGoogleCalendar}\n`;
+
+        if (logs.errors && logs.errors.length > 0 && typeof logs.errors[0] !== 'string') {
+            emailBody += `\n🚨 ERRORI RECENTI:\n`;
+            logs.errors.forEach((err, i) => {
+                emailBody += `${i + 1}. [${err.time}] ${err.message}\n`;
+            });
+        }
+    }
+
+    // Se c'è uno screenshot, avvisa che deve essere allegato manualmente
+    if (bugReportScreenshotData) {
+        emailBody += `\n📸 SCREENSHOT: L'utente ha allegato uno screenshot. Verrà scaricato separatamente.\n`;
+
+        // Scarica lo screenshot come file
+        const link = document.createElement('a');
+        link.href = bugReportScreenshotData;
+        link.download = `bug_screenshot_${Date.now()}.png`;
+        link.click();
+
+        showToast('Screenshot scaricato - allegalo alla email', 'info');
+    }
+
+    // Crea mailto link
+    const subject = encodeURIComponent(`🐛 Bug Report - Mago Max S.A.V.E.R.S.`);
+    const body = encodeURIComponent(emailBody);
+    const mailtoLink = `mailto:ilmagicartista@gmail.com?subject=${subject}&body=${body}`;
+
+    // Apri client email
+    window.location.href = mailtoLink;
+
+    // Reset form
+    setTimeout(() => {
+        document.getElementById('bugReportDescription').value = '';
+        removeBugScreenshot();
+        showToast('Email preparata! Completa l\'invio nel tuo client email', 'success');
+    }, 500);
+}
+
+// ============================================
 // KEYBOARD SHORTCUTS
 // ============================================
 
@@ -16886,10 +17111,57 @@ async function saveEditedWallet(walletId) {
 }
 
 // ============================================
-// EVENT FINANCE - Guadagni/Spese per Evento
+// EVENT FINANCE - Guadagni/Spese per Evento (via Commenti)
 // ============================================
 
-// Mostra riepilogo finanze evento nel dettaglio
+// Calcola riepilogo finanziario dai commenti evento
+function renderEventFinanceSummaryFromComments(commentId) {
+    // Trova sezione commenti e aggiungi riepilogo se ci sono commenti finanziari
+    const comments = state.eventComments[commentId] || [];
+    const financialComments = comments.filter(c =>
+        c.type && c.type !== 'normal' && c.amount && canSeeFinancialComment(c)
+    );
+
+    if (financialComments.length === 0) return;
+
+    const income = financialComments.filter(c => c.type === 'income').reduce((s, c) => s + Math.abs(c.amount || 0), 0);
+    const expenses = financialComments.filter(c => c.type === 'expense').reduce((s, c) => s + Math.abs(c.amount || 0), 0);
+    const profit = income - expenses;
+
+    // Cerca o crea il container riepilogo sotto i commenti
+    let summaryContainer = document.getElementById('eventFinanceSummaryFromComments');
+    const commentsSection = document.querySelector('.event-comments');
+
+    if (!summaryContainer && commentsSection) {
+        summaryContainer = document.createElement('div');
+        summaryContainer.id = 'eventFinanceSummaryFromComments';
+        commentsSection.insertBefore(summaryContainer, commentsSection.firstChild);
+    }
+
+    if (summaryContainer) {
+        summaryContainer.innerHTML = `
+            <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-bottom:12px;">
+                <div style="font-weight:600; margin-bottom:10px;">💰 Riepilogo Finanziario</div>
+                <div style="display:flex; gap:10px; text-align:center;">
+                    <div style="flex:1;">
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">Incassi</div>
+                        <div style="font-weight:600; color:var(--success);">+€${income.toFixed(2)}</div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">Spese</div>
+                        <div style="font-weight:600; color:var(--danger);">-€${expenses.toFixed(2)}</div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">Profitto</div>
+                        <div style="font-weight:600; color:${profit >= 0 ? 'var(--success)' : 'var(--danger)'};">€${profit.toFixed(2)}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// LEGACY: Mostra riepilogo finanze evento nel dettaglio (per transazioni vecchio sistema)
 function renderEventFinanceSummary(eventId, isGoogle) {
     const container = document.getElementById('eventFinanceSummary');
     if (!container) return;
@@ -27814,19 +28086,10 @@ function openEventDetail(eventId, isGoogle = false) {
     // Popola partecipanti
     renderEventAttendees(event, isGoogle);
 
-    // Carica commenti dal cloud usando l'ID universale (iCalUID per eventi condivisi)
-    const commentId = currentEventCommentId || eventId;
-    console.log('📬 Caricamento commenti con ID:', commentId);
-    loadEventCommentsFromCloud(commentId).then(() => {
-        renderEventComments(commentId);
-    });
-
-    // Footer con azioni
-    const footerEl = document.getElementById('eventDetailFooter');
-
     // Verifica se l'utente è il proprietario/organizzatore dell'evento
     const myEmail = state.profile?.email?.toLowerCase();
     let isOwner = false;
+    let canComment = false;
 
     if (isGoogle) {
         // Per eventi Google, controlla se l'organizer sono io o se sono "self"
@@ -27834,25 +28097,38 @@ function openEventDetail(eventId, isGoogle = false) {
         isOwner = event.organizer?.self ||
                   organizerEmail === myEmail ||
                   event.creator?.email?.toLowerCase() === myEmail;
+
+        // Può commentare se è proprietario o partecipante
+        canComment = isOwner || event.attendees?.some(att => att.email?.toLowerCase() === myEmail);
     } else {
         // Per eventi locali, l'utente corrente è sempre il proprietario
         isOwner = true;
+        canComment = true;
     }
 
-    // Sezione Finanze Evento
-    const eventFinanceHtml = `
-        <div style="border-top:1px solid var(--border-color); margin-top:16px; padding-top:16px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-weight:600;">💰 Finanze Evento</span>
-                <button class="btn btn-sm btn-primary" onclick="openEventFinanceModal('${eventId}', ${isGoogle})">+ Aggiungi</button>
-            </div>
-            <div id="eventFinanceSummary"></div>
-        </div>
-    `;
-    contentEl.innerHTML += eventFinanceHtml;
+    // Mostra/nascondi input commenti in base ai permessi
+    const commentInputWrapper = document.getElementById('eventCommentInputWrapper');
+    if (commentInputWrapper) {
+        if (canComment) {
+            commentInputWrapper.style.display = 'block';
+            // Reset tipo commento
+            setEventCommentType('normal');
+        } else {
+            commentInputWrapper.style.display = 'none';
+        }
+    }
 
-    // Carica e mostra riepilogo finanze evento
-    renderEventFinanceSummary(eventId, isGoogle);
+    // Carica commenti dal cloud usando l'ID universale (iCalUID per eventi condivisi)
+    const commentId = currentEventCommentId || eventId;
+    console.log('📬 Caricamento commenti con ID:', commentId);
+    loadEventCommentsFromCloud(commentId).then(() => {
+        renderEventComments(commentId);
+        // Aggiorna riepilogo finanziario dopo caricamento commenti
+        renderEventFinanceSummaryFromComments(commentId);
+    });
+
+    // Footer con azioni
+    const footerEl = document.getElementById('eventDetailFooter');
 
     if (isGoogle) {
         if (isOwner) {
@@ -27927,7 +28203,16 @@ function renderEventComments(eventId) {
     const container = document.getElementById('eventCommentsList');
     if (!container) return;
 
-    const comments = state.eventComments[eventId] || [];
+    const allComments = state.eventComments[eventId] || [];
+
+    // Filtra commenti: mostra tutti i normali, filtra finanziari per visibilità
+    const comments = allComments.filter(comment => {
+        // Commenti normali: visibili a tutti i partecipanti
+        if (!comment.type || comment.type === 'normal') return true;
+
+        // Commenti finanziari: visibili solo a proprietario e menzionati
+        return canSeeFinancialComment(comment);
+    });
 
     if (comments.length === 0) {
         container.innerHTML = '<div class="text-muted" style="font-size:0.85rem;padding:8px 0;">Nessun commento ancora. Sii il primo!</div>';
@@ -27939,17 +28224,37 @@ function renderEventComments(eventId) {
         const initial = (comment.authorName || 'U').charAt(0).toUpperCase();
 
         // Evidenzia menzioni
-        let text = comment.text.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
+        let text = (comment.text || '').replace(/@(\w+)/g, '<span class="mention">@$1</span>');
+
+        // Determina se è un commento finanziario
+        const isFinancial = comment.type && comment.type !== 'normal';
+        const isIncome = comment.type === 'income';
+        const isExpense = comment.type === 'expense';
+
+        // Classe CSS per il tipo di commento
+        const itemClass = isFinancial ?
+            `comment-item financial ${isIncome ? 'income' : 'expense'}` :
+            'comment-item';
+
+        // Mostra importo per commenti finanziari
+        const amountHtml = isFinancial && comment.amount ?
+            `<span class="comment-amount ${isIncome ? 'income' : 'expense'}">${isIncome ? '+' : ''}€${Math.abs(comment.amount).toFixed(2)}</span>` :
+            '';
+
+        // Badge tipo per commenti finanziari
+        const typeBadge = isFinancial ?
+            `<span class="financial-badge">${isIncome ? '💵 Incasso' : '💸 Spesa'}</span>` :
+            '';
 
         return `
-            <div class="comment-item">
+            <div class="${itemClass}">
                 <div class="comment-avatar">${initial}</div>
                 <div class="comment-content">
                     <div class="comment-header">
-                        <span class="comment-author">${comment.authorName || 'Anonimo'}</span>
+                        <span class="comment-author">${comment.authorName || 'Anonimo'}${typeBadge}</span>
                         <span class="comment-time">${timeAgo}</span>
                     </div>
-                    <div class="comment-text">${text}</div>
+                    <div class="comment-text">${amountHtml}${text}</div>
                 </div>
             </div>
         `;
@@ -28184,19 +28489,163 @@ function handleEventMentionKeydown(event) {
     }
 }
 
+// Stato corrente del tipo di commento
+let currentEventCommentType = 'normal'; // 'normal', 'income', 'expense'
+
+// Imposta il tipo di commento evento
+function setEventCommentType(type) {
+    currentEventCommentType = type;
+
+    // Aggiorna UI bottoni
+    document.querySelectorAll('.comment-type-btn').forEach(btn => {
+        btn.classList.remove('active', 'income', 'expense');
+    });
+
+    const activeBtn = document.getElementById(type === 'normal' ? 'commentTypeNormal' :
+                                               type === 'income' ? 'commentTypeIncome' : 'commentTypeExpense');
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+        if (type === 'income') activeBtn.classList.add('income');
+        if (type === 'expense') activeBtn.classList.add('expense');
+    }
+
+    // Mostra/nascondi campo importo
+    const amountWrapper = document.getElementById('eventCommentAmountWrapper');
+    const amountInput = document.getElementById('eventCommentAmount');
+    const textInput = document.getElementById('eventCommentInput');
+
+    if (type === 'normal') {
+        amountWrapper.style.display = 'none';
+        textInput.placeholder = 'Scrivi... @ per menzionare';
+    } else {
+        amountWrapper.style.display = 'block';
+        textInput.placeholder = type === 'income' ? 'Descrizione incasso... @ per menzionare' : 'Descrizione spesa... @ per menzionare';
+        amountInput.focus();
+    }
+}
+
+// Verifica se l'utente può commentare questo evento
+function canCommentOnEvent(event, isGoogle) {
+    if (!event) return false;
+
+    const myEmail = state.profile?.email?.toLowerCase();
+    if (!myEmail) return false;
+
+    if (isGoogle) {
+        // Proprietario (organizer o creator)
+        if (event.organizer?.self ||
+            event.organizer?.email?.toLowerCase() === myEmail ||
+            event.creator?.email?.toLowerCase() === myEmail) {
+            return true;
+        }
+
+        // Partecipante
+        if (event.attendees?.some(att => att.email?.toLowerCase() === myEmail)) {
+            return true;
+        }
+
+        return false;
+    } else {
+        // Eventi locali: sempre proprietario
+        return true;
+    }
+}
+
+// Verifica se l'utente può vedere un commento finanziario
+function canSeeFinancialComment(comment) {
+    const myEmail = state.profile?.email?.toLowerCase();
+    if (!myEmail) return false;
+
+    // L'autore può sempre vedere i propri commenti
+    if (comment.authorEmail?.toLowerCase() === myEmail) return true;
+
+    // PRIORITÀ: Proprietario/organizzatore evento può SEMPRE vedere tutti i commenti finanziari
+    // Cerca l'evento sia tra quelli Google che locali
+    let event = null;
+    let eventIsGoogle = false;
+
+    // Prova prima Google Calendar
+    if (currentEventId && state.calendarEvents) {
+        event = state.calendarEvents.find(e => e.id === currentEventId);
+        if (event) eventIsGoogle = true;
+    }
+
+    // Se non trovato, prova eventi locali
+    if (!event && currentEventId && state.events) {
+        event = state.events.find(e => e.id === currentEventId);
+        eventIsGoogle = false;
+    }
+
+    if (event) {
+        if (eventIsGoogle) {
+            // Per eventi Google: sono proprietario se sono l'organizer o il creator
+            const organizerEmail = event.organizer?.email?.toLowerCase();
+            const creatorEmail = event.creator?.email?.toLowerCase();
+
+            if (event.organizer?.self === true ||
+                organizerEmail === myEmail ||
+                creatorEmail === myEmail) {
+                console.log('👑 Proprietario evento - può vedere tutti i commenti finanziari');
+                return true;
+            }
+        } else {
+            // Eventi locali: l'utente corrente è sempre il proprietario
+            console.log('👑 Proprietario evento locale - può vedere tutti i commenti finanziari');
+            return true;
+        }
+    }
+
+    // Controlla se sono menzionato nel commento
+    const mentions = extractMentions(comment.text || '');
+    const myName = state.profile?.name?.toLowerCase() || '';
+    const myUsername = myEmail.split('@')[0].toLowerCase();
+    const myStageName = state.profile?.stageName?.toLowerCase() || '';
+
+    for (const mention of mentions) {
+        const mentionLower = mention.toLowerCase();
+        if (mentionLower === myName ||
+            mentionLower === myUsername ||
+            mentionLower.includes(myUsername) ||
+            (myStageName && mentionLower === myStageName)) {
+            console.log('📣 Menzionato nel commento - può vedere');
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Aggiungi commento a evento
 function addEventComment() {
     if (!currentEventId) return;
 
     const input = document.getElementById('eventCommentInput');
     const text = input.value.trim();
-    if (!text) return;
+
+    // Verifica che ci sia testo
+    if (!text && currentEventCommentType === 'normal') return;
+
+    // Per commenti finanziari, verifica importo
+    const amountInput = document.getElementById('eventCommentAmount');
+    let amount = null;
+
+    if (currentEventCommentType !== 'normal') {
+        amount = parseFloat(amountInput?.value || 0);
+        if (!amount || amount <= 0) {
+            showToast('Inserisci un importo valido', 'error');
+            return;
+        }
+        // Converti in negativo se spesa
+        if (currentEventCommentType === 'expense') {
+            amount = -Math.abs(amount);
+        }
+    }
 
     initInbox();
 
     // Usa l'ID universale per i commenti (iCalUID per eventi condivisi)
     const commentId = currentEventCommentId || currentEventId;
-    console.log('💬 Aggiunta commento con ID:', commentId);
+    console.log('💬 Aggiunta commento con ID:', commentId, 'tipo:', currentEventCommentType);
 
     if (!state.eventComments[commentId]) {
         state.eventComments[commentId] = [];
@@ -28207,11 +28656,14 @@ function addEventComment() {
 
     const comment = {
         id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        text: text,
+        text: text || (currentEventCommentType === 'income' ? 'Incasso' : 'Spesa'),
         authorId: state.profile?.googleId || currentUser?.username || 'local',
         authorName: authorName,
         authorEmail: authorEmail,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        // Campi finanziari
+        type: currentEventCommentType, // 'normal', 'income', 'expense'
+        amount: amount // null per commenti normali, numero per finanziari
     };
 
     state.eventComments[commentId].push(comment);
@@ -28231,11 +28683,23 @@ function addEventComment() {
     }
 
     saveStateAndSync();
+
+    // Messaggio conferma appropriato (PRIMA del reset)
+    const commentTypeForToast = currentEventCommentType;
+    const toastMsg = commentTypeForToast === 'normal' ? 'Commento aggiunto!' :
+                     (amount > 0 ? `Incasso di €${amount.toFixed(2)} registrato!` : `Spesa di €${Math.abs(amount).toFixed(2)} registrata!`);
+
+    // Reset form
     input.value = '';
+    if (amountInput) amountInput.value = '';
+    setEventCommentType('normal'); // Torna al tipo normale
+
     renderEventComments(commentId);
 
-    // Riproduci suono per conferma
-    showToast('Commento aggiunto!', 'success');
+    // Aggiorna riepilogo finanziario
+    renderEventFinanceSummaryFromComments(commentId);
+
+    showToast(toastMsg, 'success');
 }
 
 // Salva i commenti evento su Google Sheets

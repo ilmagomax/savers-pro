@@ -1,5 +1,5 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-28 - FASE 2 COMPLETATA
+> Aggiornato: 2026-01-28 - FASE 2+ COMPLETATA (Commenti Finanziari)
 
 ## STATO PROGETTO
 
@@ -17,12 +17,39 @@
   - [x] SAVERS Logs
   - [x] Pomodoro Sessions
   - [x] Money Goals (testato - funzionante con Supabase)
+- [x] **FASE 2+: Miglioramenti UX**
+  - [x] Sistema Wallet/Portafogli per tracciare conti (cash, bank, card, crypto)
+  - [x] Commenti Finanziari sugli Eventi (incasso/spesa per animatori)
+  - [x] OCR Scontrini con compressione immagine
+  - [x] Rimosso API Counter e SYNC legacy
+
+### Nuova Feature: Commenti Finanziari Eventi (2026-01-28)
+
+Gli animatori possono registrare incassi e spese direttamente nei commenti degli eventi calendario:
+
+1. **Tipi di commento**: Normale (💬), Incasso (💵), Spesa (💸)
+2. **Visibilità**: I commenti finanziari sono visibili solo a:
+   - L'autore del commento
+   - Il proprietario/organizzatore dell'evento
+   - Gli utenti @menzionati nel commento
+3. **Permessi**: Solo proprietari e partecipanti possono commentare
+4. **Riepilogo**: Calcolo automatico incassi/spese/profitto per evento
+
+**Funzioni chiave** (index.html ~riga 28200-28350):
+- `setEventCommentType(type)` - Seleziona tipo commento
+- `canCommentOnEvent(event, isGoogle)` - Verifica permessi
+- `canSeeFinancialComment(comment)` - Filtra visibilità
+- `renderEventFinanceSummaryFromComments(commentId)` - Riepilogo finanziario
 
 ### Bug Risolti (2026-01-28)
 
 1. **Fix showModal function** - La funzione `showModal()` non mostrava i modal dinamici perché creava un `<div class="modal">` invece di `<div class="modal-overlay"><div class="modal">...</div></div>`. Fixato in commit 783ed9f.
 
 2. **Money Goals** - Tabella già presente in Supabase, modulo testato e funzionante
+
+3. **OCR 1MB limit** - Aggiunta compressione immagine `compressImageForOCR()` per rispettare limite OCR.space
+
+4. **Tesseract lingua** - Cambiato da 'ita' a 'eng' per compatibilità file .traineddata
 
 ### Da Fare (Prossime Fasi)
 - [ ] FASE 3: Team & Progetti
@@ -91,8 +118,10 @@ await Promise.all([
 ```
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
 
-FASE 2 COMPLETATA - Tutti i moduli personali funzionano:
+FASE 2+ COMPLETATA - Funzionalità personali + commenti finanziari:
 - Habits, Tasks, Transactions, Books, Goals, Notes, Money Goals
+- Wallets/Portafogli per tracciare conti
+- Commenti finanziari per eventi (incasso/spesa animatori)
 
 PROSSIMA PRIORITA': FASE 3 - Team & Progetti
 - Migrazione funzionalità team a Supabase
