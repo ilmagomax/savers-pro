@@ -17927,15 +17927,31 @@ function openAgencyFeeDetail() {
 
 // Apri evento dal dettaglio compensi
 function openEventFromAgencyFee(eventId) {
-    closeModal('dynamicModal');
+    if (!eventId) {
+        showToast('ID evento non trovato', 'error');
+        return;
+    }
+
+    // Chiudi modal
+    const modal = document.getElementById('dynamicModal');
+    if (modal) modal.remove();
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) overlay.remove();
 
     // Cerca se è evento Google o locale
     const calEvent = state.calendarEvents?.find(e => e.id === eventId || e.iCalUID === eventId);
+    const localEvent = state.events?.find(e => e.id === eventId);
+
+    if (!calEvent && !localEvent) {
+        showToast('Evento non trovato nel calendario', 'warning');
+        return;
+    }
+
     const isGoogle = !!calEvent;
 
     setTimeout(() => {
         openEventDetail(eventId, isGoogle);
-    }, 300);
+    }, 200);
 }
 
 // Helper: Aggiunge un log al compenso
