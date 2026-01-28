@@ -4331,15 +4331,23 @@ function setupSupabaseAuth() {
     }
 
     let profileLoadingInProgress = false;
+    let dataLoadedSuccessfully = false;
 
     sb.auth.onAuthStateChange(async (event, session) => {
         console.log('🔐 Auth event:', event);
 
-        // Handle both SIGNED_IN and INITIAL_SESSION for reliability
+        // Handle INITIAL_SESSION only (more reliable than SIGNED_IN which fires too early)
+        // Also handle SIGNED_IN as fallback if INITIAL_SESSION never comes
         if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
-            // Skip if already processed or loading in progress
-            if (currentUser?.id === session.user.id && (userProfile || profileLoadingInProgress)) {
-                console.log('⏭️ Session already loaded or loading, skipping');
+            // Skip if data already loaded successfully
+            if (dataLoadedSuccessfully) {
+                console.log('⏭️ Data already loaded, skipping');
+                return;
+            }
+
+            // Skip if another load is in progress
+            if (profileLoadingInProgress) {
+                console.log('⏭️ Profile loading in progress, skipping');
                 return;
             }
 
@@ -4358,8 +4366,12 @@ function setupSupabaseAuth() {
             }
 
             // Carica o crea profilo
-            await ensureUserProfile();
+            const success = await ensureUserProfile();
             profileLoadingInProgress = false;
+
+            if (success) {
+                dataLoadedSuccessfully = true;
+            }
 
             // Mostra app
             showApp();
@@ -4663,10 +4675,11 @@ async function updateHabitStreakInDB(habitId) {
 }
 
 // Ensure user profile exists in database
+// Returns true if profile loaded successfully, false otherwise
 async function ensureUserProfile() {
     const sb = getSupabase();
     console.log('🔍 ensureUserProfile called, sb:', !!sb, 'currentUser:', !!currentUser);
-    if (!currentUser || !sb) return;
+    if (!currentUser || !sb) return false;
 
     try {
         console.log('📡 Starting profile query for:', currentUser.id);
@@ -4690,8 +4703,8 @@ async function ensureUserProfile() {
             console.log('📡 Profile query completed:', { hasProfile: !!profile, error: error?.message });
         } catch (timeoutErr) {
             console.error('❌ Profile query timeout:', timeoutErr.message);
-            // Continua comunque con i dati locali
-            return;
+            // Timeout - ritorna false per permettere retry
+            return false;
         }
 
         // Carica organization separatamente
@@ -4786,9 +4799,11 @@ async function ensureUserProfile() {
         ]);
 
         console.log('✅ All data loaded from Supabase');
+        return true;
 
     } catch (err) {
         console.error('Profile error:', err);
+        return false;
     }
 }
 
