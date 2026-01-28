@@ -4394,23 +4394,36 @@ async function loadHabitsFromDB() {
             return [];
         }
 
+        console.log('📥 Raw habits from DB:', data);
+
         // Convert DB format to state format
-        return data.map(h => ({
-            id: h.id,
-            name: h.name,
-            icon: h.icon || '✅',
-            frequency: h.frequency || 'daily',
-            department: h.department || 'personal',
-            streak: h.current_streak || 0,
-            bestStreak: h.best_streak || 0,
-            totalCompletions: h.total_completions || 0,
-            completedDates: h.habit_logs?.map(l => l.completed_at) || [],
-            scheduledTime: h.reminder_time,
-            createdAt: h.created_at,
-            color: h.color,
-            description: h.description,
-            _supabaseId: h.id // Keep reference to DB id
-        }));
+        return data.map(h => {
+            // Normalize completed_at dates to YYYY-MM-DD format
+            const completedDates = (h.habit_logs || []).map(l => {
+                if (!l.completed_at) return null;
+                // Handle both date string and ISO timestamp
+                return l.completed_at.split('T')[0];
+            }).filter(d => d);
+
+            console.log(`📅 Habit "${h.name}" completedDates:`, completedDates);
+
+            return {
+                id: h.id,
+                name: h.name,
+                icon: h.icon || '✅',
+                frequency: h.frequency || 'daily',
+                department: h.department || 'personal',
+                streak: h.current_streak || 0,
+                bestStreak: h.best_streak || 0,
+                totalCompletions: h.total_completions || 0,
+                completedDates: completedDates,
+                scheduledTime: h.reminder_time,
+                createdAt: h.created_at,
+                color: h.color,
+                description: h.description,
+                _supabaseId: h.id
+            };
+        });
     } catch (err) {
         console.error('Error in loadHabitsFromDB:', err);
         return [];
@@ -4747,6 +4760,8 @@ async function loadHabitsFromSupabase() {
             // Replace local habits with DB habits
             state.habits = dbHabits;
             console.log(`✅ Loaded ${dbHabits.length} habits from Supabase`);
+            console.log('📅 Today date format:', state.today?.date);
+            console.log('📊 Habits with completedDates:', dbHabits.map(h => ({ name: h.name, dates: h.completedDates })));
 
             // Render updated habits
             if (typeof renderHabitsPage === 'function') {
