@@ -4333,23 +4333,36 @@ function setupSupabaseAuth() {
     let authHandled = false;
 
     sb.auth.onAuthStateChange(async (event, session) => {
-        console.log('🔐 Auth event:', event, 'authHandled:', authHandled);
+        console.log('🔐 Auth event:', event);
 
-        // Handle sign in events
-        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
-            // Skip if already handled (single execution guarantee)
+        // SIGNED_IN arriva troppo presto - setta solo i token ma NON caricare dati
+        if (event === 'SIGNED_IN' && session) {
+            // Salva token Google per Calendar API (subito disponibili)
+            if (session.provider_token) {
+                localStorage.setItem('google_access_token', session.provider_token);
+            }
+            if (session.provider_refresh_token) {
+                localStorage.setItem('google_refresh_token', session.provider_refresh_token);
+            }
+            // NON caricare profilo qui - aspetta INITIAL_SESSION
+            console.log('⏳ SIGNED_IN received, waiting for INITIAL_SESSION...');
+            return;
+        }
+
+        // INITIAL_SESSION è l'evento affidabile - Supabase è pronto
+        if (event === 'INITIAL_SESSION' && session) {
             if (authHandled) {
                 console.log('⏭️ Auth already handled, skipping');
                 return;
             }
-            authHandled = true; // Set immediately to prevent any race conditions
+            authHandled = true;
 
             currentUser = session.user;
             isLoggedIn = true;
             isGoogleSignedIn = true;
             console.log('✅ User signed in:', currentUser.email);
 
-            // Salva token Google per Calendar API
+            // Salva token (nel caso SIGNED_IN non sia arrivato)
             if (session.provider_token) {
                 localStorage.setItem('google_access_token', session.provider_token);
             }
@@ -4357,20 +4370,13 @@ function setupSupabaseAuth() {
                 localStorage.setItem('google_refresh_token', session.provider_refresh_token);
             }
 
-            // Carica o crea profilo (con retry automatico se timeout)
-            let success = await ensureUserProfile();
-
-            // Se fallisce (timeout), riprova una volta dopo 2 secondi
-            if (!success) {
-                console.log('🔄 Retrying profile load in 2s...');
-                await new Promise(r => setTimeout(r, 2000));
-                success = await ensureUserProfile();
-            }
+            // Carica profilo - ora Supabase è pronto
+            await ensureUserProfile();
 
             // Mostra app
             showApp();
 
-            // Aggiorna UI (mostra logout button, etc.)
+            // Aggiorna UI
             updateGoogleConnectionUI();
 
         } else if (event === 'SIGNED_OUT') {
@@ -4686,7 +4692,7 @@ async function ensureUserProfile() {
             .single();
 
         const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Query timeout after 10s')), 10000)
+            setTimeout(() => reject(new Error('Query timeout after 5s')), 5000)
         );
 
         let profile, error;
