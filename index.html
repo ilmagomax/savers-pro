@@ -17328,11 +17328,6 @@ function renderEventFinanceSummaryFromComments(commentId) {
         .filter(c => c.type === 'income')
         .reduce((s, c) => s + (c.incomeTotal || c.amount || 0), 0);
 
-    // Guadagno animatore (animatorProfit è il campo corretto)
-    const guadagnoAnimatore = financialComments
-        .filter(c => c.type === 'income')
-        .reduce((s, c) => s + (c.animatorProfit || 0), 0);
-
     // Spese dall'incasso (animatorExpenses) + spese separate (type === 'expense')
     const speseInIncasso = financialComments
         .filter(c => c.type === 'income')
@@ -17346,6 +17341,21 @@ function renderEventFinanceSummaryFromComments(commentId) {
     const compensiAgenzia = financialComments
         .filter(c => c.type === 'income' && c.agencyFee > 0)
         .reduce((s, c) => s + (c.agencyFee || 0), 0);
+
+    // Guadagno animatore (animatorProfit, con fallback a calcolo)
+    const guadagnoAnimatore = financialComments
+        .filter(c => c.type === 'income')
+        .reduce((s, c) => {
+            // Se animatorProfit esiste, usalo
+            if (c.animatorProfit !== undefined && c.animatorProfit !== null) {
+                return s + c.animatorProfit;
+            }
+            // Fallback: calcola come incomeTotal - agencyFee - animatorExpenses
+            const incomeTotal = c.incomeTotal || c.amount || 0;
+            const agencyFee = c.agencyFee || 0;
+            const expenses = c.animatorExpenses || 0;
+            return s + (incomeTotal - agencyFee - expenses);
+        }, 0);
 
     // Cerca o crea il container riepilogo sotto i commenti
     let summaryContainer = document.getElementById('eventFinanceSummaryFromComments');
@@ -18843,10 +18853,15 @@ function renderEventsDashboard() {
                     // Calcoli per vista agenzia - usa i campi corretti
                     const incomeTotal = c.incomeTotal || c.amount || 0;
                     const agencyFee = c.agencyFee || 0;
-                    // animatorProfit è il guadagno dell'animatore (Tuo Guadagno nel form)
-                    const animatorProfit = c.animatorProfit || 0;
                     // animatorExpenses sono le spese dichiarate nell'incasso
                     const animatorExpenses = c.animatorExpenses || 0;
+                    // animatorProfit con fallback a calcolo
+                    let animatorProfit = 0;
+                    if (c.animatorProfit !== undefined && c.animatorProfit !== null) {
+                        animatorProfit = c.animatorProfit;
+                    } else {
+                        animatorProfit = incomeTotal - agencyFee - animatorExpenses;
+                    }
 
                     eventGroups[key].ritiroSaldo += incomeTotal;
                     eventGroups[key].guadagnoAnimatore += animatorProfit;
@@ -19278,11 +19293,6 @@ function showEventFinanceDetail(eventId) {
     const ritiroSaldo = financialComments
         .filter(c => c.type === 'income')
         .reduce((s, c) => s + (c.incomeTotal || c.amount || 0), 0);
-
-    // Guadagno animatore (animatorProfit è il campo corretto)
-    const guadagnoAnimatore = financialComments
-        .filter(c => c.type === 'income')
-        .reduce((s, c) => s + (c.animatorProfit || 0), 0);
 
     // Spese dall'incasso (animatorExpenses) + spese separate (type === 'expense')
     const speseInIncasso = financialComments
