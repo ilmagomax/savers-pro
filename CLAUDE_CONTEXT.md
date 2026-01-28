@@ -1,63 +1,83 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-28 - FASE 2+ COMPLETATA (Commenti Finanziari)
+> Aggiornato: 2026-01-28 - Sistema Compensi Agenzia per Animatori
 
-## STATO PROGETTO
+## STATO PROGETTO ATTUALE
 
-### Completato
-- [x] FASE 0: Setup Progetto (GitHub, Vercel, CSS estratto)
-- [x] FASE 1: Auth Migration a Supabase (Google OAuth funzionante)
-- [x] RLS Policies fixate (profiles + organizations)
-- [x] **FASE 2: Migrazione Dati Personali** - COMPLETATA
-  - [x] Habits + Habit Logs
-  - [x] Tasks
-  - [x] Transactions (CRUD + edit/delete modal funzionante)
-  - [x] Books (testato - funzionante)
-  - [x] Goals (testato - funzionante)
-  - [x] Notes (testato - funzionante)
-  - [x] SAVERS Logs
-  - [x] Pomodoro Sessions
-  - [x] Money Goals (testato - funzionante con Supabase)
-- [x] **FASE 2+: Miglioramenti UX**
-  - [x] Sistema Wallet/Portafogli per tracciare conti (cash, bank, card, crypto)
-  - [x] Commenti Finanziari sugli Eventi (incasso/spesa per animatori)
-  - [x] OCR Scontrini con compressione immagine
-  - [x] Rimosso API Counter e SYNC legacy
+### Sistema Compensi Agenzia (IN LAVORAZIONE)
 
-### Nuova Feature: Commenti Finanziari Eventi (2026-01-28)
+Sistema di gestione compensi per agenzie di animazione con flusso bidirezionale animatore-proprietario.
 
-Gli animatori possono registrare incassi e spese direttamente nei commenti degli eventi calendario:
+#### Struttura Dati Commento Finanziario (Income)
+```javascript
+{
+    id: 'comment_xxx',
+    type: 'income',
+    incomeTotal: 100,           // Ritiro Saldo totale
+    animatorProfit: 50,         // Guadagno animatore (Tuo Guadagno)
+    animatorExpenses: 20,       // Spese sostenute dall'animatore
+    agencyFee: 30,              // Compensi Agenzia (da consegnare)
+    agencyFeeDelivered: false,  // Segnato come consegnato
+    agencyFeeConfirmed: false,  // Confermato dal proprietario
+    agencyFeeModifiedByOwner: false,  // Owner ha modificato l'importo
+    agencyFeeAnimatorAccepted: false, // Animatore ha accettato modifica
+    agencyFeeLog: []            // Log attività con timestamp
+}
+```
 
-1. **Tipi di commento**: Normale (💬), Incasso (💵), Spesa (💸)
-2. **Visibilità**: I commenti finanziari sono visibili solo a:
-   - L'autore del commento
-   - Il proprietario/organizzatore dell'evento
-   - Gli utenti @menzionati nel commento
-3. **Permessi**: Solo proprietari e partecipanti possono commentare
-4. **Riepilogo**: Calcolo automatico incassi/spese/profitto per evento
+#### Flusso Consegna Compensi
+1. **PENDING**: Animatore registra incasso, compensi da consegnare
+2. **PENDING_OWNER_CONFIRMATION**: Animatore clicca "Segna come Consegnato"
+3. Owner può:
+   - **Confermare** → stato CONFIRMED
+   - **Modificare importo** → stato PENDING_ANIMATOR_CONFIRMATION
+4. Se modificato, Animatore può:
+   - **Accettare** → torna a PENDING_OWNER_CONFIRMATION
+   - **Rifiutare** → torna a PENDING (deve ri-consegnare)
 
-**Funzioni chiave** (index.html ~riga 28200-28350):
-- `setEventCommentType(type)` - Seleziona tipo commento
-- `canCommentOnEvent(event, isGoogle)` - Verifica permessi
-- `canSeeFinancialComment(comment)` - Filtra visibilità
-- `renderEventFinanceSummaryFromComments(commentId)` - Riepilogo finanziario
+#### Vista Finanziaria Differenziata
 
-### Bug Risolti (2026-01-28)
+**Vista Agenzia (Owner/Admin):**
+- Ritiro Saldo: €100
+- Spese Totali: €70 (€50 guadagno anim. + €20 spese)
+- Profitto Agenzia: €30
 
-1. **Fix showModal function** - La funzione `showModal()` non mostrava i modal dinamici perché creava un `<div class="modal">` invece di `<div class="modal-overlay"><div class="modal">...</div></div>`. Fixato in commit 783ed9f.
+**Vista Animatore (4 colonne):**
+- Ritiro Saldo: €100
+- Spese: €20
+- Guadagno: €50
+- Compensi Ag.: €30
 
-2. **Money Goals** - Tabella già presente in Supabase, modulo testato e funzionante
+#### Funzioni Chiave (index.html)
+- `renderAgencyFeeWallet()` - Wallet Compensi mensile (~riga 17653)
+- `openAgencyFeeDetail()` - Modal dettaglio compensi
+- `markAgencyFeesAsDelivered()` - Animatore segna consegnato
+- `confirmAgencyFeesReceived()` - Owner conferma ricezione
+- `openEditAgencyFee()` / `saveAgencyFeeModification()` - Owner modifica
+- `acceptOwnerModification()` / `rejectOwnerModification()` - Animatore accetta/rifiuta
+- `getAgencyFeesForMonth(yearMonth)` - Calcola compensi per mese (~riga 17570)
+- `renderEventsDashboard()` - Dashboard Feste & Eventi (~riga 18737)
+- `renderEventFinanceSummaryFromComments()` - Riepilogo evento (~riga 17314)
+- `showEventFinanceDetail()` - Dettaglio evento dalla dashboard (~riga 19215)
+- `canSeeFinancialComment()` - Controllo visibilità commenti (~riga 30842)
 
-3. **OCR 1MB limit** - Aggiunta compressione immagine `compressImageForOCR()` per rispettare limite OCR.space
+#### Permessi Modifica/Elimina Commenti
+- **Owner/Admin**: Può SEMPRE modificare/eliminare qualsiasi commento
+- **Animatore**: Può modificare/eliminare SOLO i propri commenti entro 5 minuti
 
-4. **Tesseract lingua** - Cambiato da 'ita' a 'eng' per compatibilità file .traineddata
+### Bug Risolti Oggi (2026-01-28)
 
-### Da Fare (Prossime Fasi)
-- [ ] FASE 3: Team & Progetti
-- [ ] FASE 4: Videocorsi (con link a GHL/Arcanis)
-- [ ] FASE 5: Shop (con link a GHL/Arcanis)
-- [ ] FASE 6: Push Notifications
-- [ ] FASE 7: PWA Optimization
-- [ ] FASE 8: Directus CMS Setup
+1. **Calcoli finanziari errati** - Usava `animatorEarning` invece di `animatorProfit`
+2. **guadagnoAnimatore mancante** - Variabile non dichiarata in showEventFinanceDetail
+3. **Fallback calcolo** - Aggiunto: se `animatorProfit` è null, calcola `incomeTotal - agencyFee - animatorExpenses`
+4. **Owner vede tutti i commenti** - Aggiunto check `isOwnerOrAdmin` in `canSeeFinancialComment()`
+5. **Owner può sempre editare** - Rimosso limite 5 minuti per owner/admin
+
+### Da Completare
+
+- [ ] Verificare che owner veda commenti da calendari diversi (stesso evento)
+- [ ] Testare flusso completo consegna compensi
+- [ ] Testare modifica importo da owner e accetta/rifiuta da animatore
+- [ ] Click su evento dalla dashboard Feste & Eventi
 
 ---
 
@@ -71,45 +91,22 @@ Gli animatori possono registrare incassi e spese direttamente nei commenti degli
 ### Supabase
 - **URL**: https://lsrzcsymiuoutcmhcain.supabase.co
 - **Anon Key**: sb_publishable_NFzbjbgsGgEn5enQg7M2VQ_XJoFb9RM
-- **Site URL**: https://savers-pro.vercel.app
 
 ---
 
-## MODULI MIGRATI A SUPABASE
+## FASI COMPLETATE
 
-### Pattern di caricamento (ensureUserProfile ~riga 4720)
-```javascript
-await Promise.all([
-    loadHabitsFromSupabase(),
-    loadTasksFromSupabase(),
-    loadTransactionsFromSupabase(),
-    loadBooksFromSupabase(),
-    loadGoalsFromSupabase(),
-    loadNotesFromSupabase(),
-    loadSaversLogsFromSupabase(),
-    loadMoneyGoalsFromSupabase()  // NUOVO
-]);
-```
+- [x] FASE 0: Setup Progetto
+- [x] FASE 1: Auth Migration a Supabase
+- [x] FASE 2: Migrazione Dati Personali (Habits, Tasks, Transactions, Books, Goals, Notes, Money Goals)
+- [x] FASE 2+: Wallets, Commenti Finanziari Eventi, OCR Scontrini
 
-### Funzioni CRUD per modulo (righe ~4375-5600)
+## FASI FUTURE
 
-**HABITS**: loadHabitsFromDB, saveHabitToDB, updateHabitInDB, deleteHabitFromDB, toggleHabitInDB
-
-**TASKS**: loadTasksFromDB, saveTaskToDB, updateTaskInDB, deleteTaskFromDB, toggleTaskInDB
-
-**TRANSACTIONS**: loadTransactionsFromDB, saveTransactionToDB, updateTransactionInDB, deleteTransactionFromDB
-
-**BOOKS**: loadBooksFromDB, saveBookToDB, updateBookInDB, deleteBookFromDB
-
-**GOALS**: loadGoalsFromDB, saveGoalToDB, updateGoalInDB, deleteGoalFromDB
-
-**NOTES**: loadNotesFromDB, saveNoteToDB, updateNoteInDB, deleteNoteFromDB
-
-**MONEY GOALS** (NUOVO): loadMoneyGoalsFromDB, saveMoneyGoalToDB, updateMoneyGoalInDB, deleteMoneyGoalFromDB
-
-**SAVERS LOGS**: loadSaversLogsFromDB, saveSaversLogToDB
-
-**POMODORO**: savePomodoroSessionToDB, loadPomodoroStatsFromDB
+- [ ] FASE 3: Team & Progetti
+- [ ] FASE 4: Videocorsi
+- [ ] FASE 5: Shop
+- [ ] FASE 6: Push Notifications
 
 ---
 
@@ -118,46 +115,16 @@ await Promise.all([
 ```
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
 
-FASE 2+ COMPLETATA - Funzionalità personali + commenti finanziari:
-- Habits, Tasks, Transactions, Books, Goals, Notes, Money Goals
-- Wallets/Portafogli per tracciare conti
-- Commenti finanziari per eventi (incasso/spesa animatori)
+CONTESTO: Sistema Compensi Agenzia per animatori.
+- Flusso bidirezionale: Animatore consegna → Owner conferma/modifica → Animatore accetta/rifiuta
+- Vista differenziata: Owner vede profitto agenzia, Animatore vede suo guadagno
+- Campi chiave: incomeTotal, animatorProfit, animatorExpenses, agencyFee
 
-PROSSIMA PRIORITA': FASE 3 - Team & Progetti
-- Migrazione funzionalità team a Supabase
-- Progetti condivisi con membri del team
+DA VERIFICARE:
+1. Owner vede TUTTI i commenti finanziari (anche da calendari diversi)
+2. Calcoli corretti: Guadagno=animatorProfit, Spese=animatorExpenses
+3. Click evento dalla dashboard Feste & Eventi funziona
+4. Flusso consegna compensi completo
+
+FILE PRINCIPALE: /Users/ilmagicartista/Downloads/savers pro per la vendita/index.html
 ```
-
----
-
-## EXTRA: DA COMPLETARE IN FUTURO
-
-### Google Tasks Sync (Disabilitato temporaneamente)
-- **Problema**: Richiede lo scope `https://www.googleapis.com/auth/tasks` che non è incluso nell'OAuth Supabase
-- **Soluzione**:
-  1. Vai su **Supabase Dashboard** → **Authentication** → **Providers** → **Google**
-  2. Aggiungi questi scopes:
-     ```
-     https://www.googleapis.com/auth/tasks
-     https://www.googleapis.com/auth/tasks.readonly
-     ```
-  3. Gli utenti dovranno ri-autenticarsi per ottenere i nuovi permessi
-- **File**: `loadGoogleTaskLists()` chiamate commentate in index.html
-
-### Backend Legacy (Disabilitato)
-- **getUserNotifications** - Vecchio backend Google Sheets, sarà migrato a Supabase
-- **getUserTeams** - Vecchio backend Google Sheets, sarà migrato a Supabase
-- **File**: Funzioni disabilitate in index.html, da riabilitare dopo migrazione a Supabase
-
----
-
-## PROMISE TAGS
-
-- [x] FASE0_COMPLETE
-- [x] FASE1_AUTH_COMPLETE
-- [x] FASE2_PERSONAL_DATA_COMPLETE
-- [ ] FASE3_TEAM_COMPLETE
-- [ ] FASE4_COURSES_COMPLETE
-- [ ] FASE5_SHOP_COMPLETE
-- [ ] FASE6_PUSH_COMPLETE
-- [ ] EXTRA_GOOGLE_TASKS_SYNC
