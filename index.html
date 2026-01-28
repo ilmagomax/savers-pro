@@ -4847,7 +4847,8 @@ async function ensureUserProfile() {
             loadNotesFromSupabase(),
             loadSaversLogsFromSupabase(),
             loadMoneyGoalsFromSupabase(),
-            loadWalletsFromSupabase()
+            loadWalletsFromSupabase(),
+            loadAllEventCommentsFromSupabase()
         ]);
 
         console.log('✅ All data loaded from Supabase');
@@ -5464,6 +5465,84 @@ async function loadWalletsFromSupabase() {
             populateWalletSelectors();
         }
     } catch (err) { console.error('Error loading wallets:', err); }
+}
+
+// Carica tutti i commenti finanziari degli eventi da Supabase
+async function loadAllEventCommentsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+
+    try {
+        console.log('📥 Loading all event comments from Supabase...');
+
+        // Carica TUTTI i commenti finanziari (income/expense)
+        // La visibilità viene controllata dal frontend con canSeeFinancialComment()
+        // ma per la dashboard carichiamo tutti quelli dove l'utente è:
+        // 1. Il proprietario del commento (user_id)
+        // 2. L'autore del commento (author_id)
+        const { data, error } = await sb
+            .from('event_comments')
+            .select('*')
+            .neq('comment_type', 'normal')  // Solo commenti finanziari
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('❌ Errore caricamento commenti eventi:', error);
+            return;
+        }
+
+        // Inizializza state.eventComments se necessario
+        initInbox();
+        state.eventComments = state.eventComments || {};
+
+        // Filtra solo i commenti visibili all'utente
+        const visibleComments = (data || []).filter(c => {
+            // L'utente è l'autore
+            if (c.author_id === currentUser.id || c.author_email === currentUser.email) return true;
+            // L'utente è il proprietario del record (ha inserito il commento)
+            if (c.user_id === currentUser.id) return true;
+            // Menzionato nel testo
+            const userEmail = currentUser.email?.toLowerCase();
+            const userName = userProfile?.full_name?.toLowerCase();
+            const stageName = userProfile?.stage_name?.toLowerCase();
+            const text = (c.text || '').toLowerCase();
+            if (userEmail && text.includes('@' + userEmail.split('@')[0])) return true;
+            if (userName && text.includes('@' + userName)) return true;
+            if (stageName && text.includes('@' + stageName)) return true;
+            return false;
+        });
+
+        // Raggruppa per event_comment_id
+        visibleComments.forEach(c => {
+            const eventId = c.event_comment_id || c.event_id;
+            if (!state.eventComments[eventId]) {
+                state.eventComments[eventId] = [];
+            }
+
+            // Evita duplicati
+            const exists = state.eventComments[eventId].some(existing => existing.id === c.id);
+            if (!exists) {
+                state.eventComments[eventId].push({
+                    id: c.id,
+                    text: c.text,
+                    type: c.comment_type || 'normal',
+                    amount: c.amount,
+                    authorId: c.author_id,
+                    authorName: c.author_name,
+                    authorEmail: c.author_email,
+                    createdAt: c.created_at,
+                    updatedAt: c.updated_at
+                });
+            }
+        });
+
+        const totalComments = visibleComments.length;
+        const eventCount = Object.keys(state.eventComments).length;
+        console.log(`✅ Loaded ${totalComments} financial comments for ${eventCount} events`);
+
+    } catch (err) {
+        console.error('❌ Error loading event comments:', err);
+    }
 }
 
 // Popola tutti i selettori wallet nella pagina
@@ -17425,10 +17504,106 @@ function renderEventsDashboard() {
     const container = document.getElementById('eventsDashboardContainer');
     if (!container) return;
 
-    // Trova tutte le transazioni legate a eventi
-    const eventTx = (state.transactions || []).filter(t => t.isEventTransaction || t.eventId);
+    // Raggruppa tutti i dati finanziari per evento
+    const eventGroups = {};
 
-    if (eventTx.length === 0) {
+    // 1. Trova transazioni legate a eventi (vecchio sistema)
+    const eventTx = (state.transactions || []).filter(t => t.isEventTransaction || t.eventId);
+    eventTx.forEach(t => {
+        const key = t.eventId || 'unknown';
+        if (!eventGroups[key]) {
+            eventGroups[key] = {
+                eventId: t.eventId,
+                eventName: t.eventName || 'Evento',
+                date: t.date,
+                items: [],
+                income: 0,
+                expenses: 0
+            };
+        }
+        eventGroups[key].items.push({ ...t, source: 'transaction' });
+        if (t.type === 'income') {
+            eventGroups[key].income += parseFloat(t.amount) || 0;
+        } else {
+            eventGroups[key].expenses += parseFloat(t.amount) || 0;
+        }
+    });
+
+    // 2. Trova commenti finanziari dagli eventi (nuovo sistema)
+    const eventComments = state.eventComments || {};
+    Object.keys(eventComments).forEach(commentId => {
+        const comments = eventComments[commentId] || [];
+        const financialComments = comments.filter(c => c.type && c.type !== 'normal' && c.amount);
+
+        if (financialComments.length > 0) {
+            // Cerca info evento dal calendario
+            let eventInfo = null;
+            let eventName = 'Evento';
+            let eventDate = null;
+
+            // Cerca in Google Calendar
+            if (state.calendarEvents) {
+                eventInfo = state.calendarEvents.find(e =>
+                    e.id === commentId || e.iCalUID === commentId
+                );
+                if (eventInfo) {
+                    eventName = eventInfo.summary || 'Evento';
+                    eventDate = eventInfo.start?.dateTime?.split('T')[0] || eventInfo.start?.date;
+                }
+            }
+
+            // Cerca in eventi locali
+            if (!eventInfo && state.events) {
+                eventInfo = state.events.find(e => e.id === commentId);
+                if (eventInfo) {
+                    eventName = eventInfo.title || 'Evento';
+                    eventDate = eventInfo.date;
+                }
+            }
+
+            // Se non trovato, usa il primo commento per la data
+            if (!eventDate && financialComments[0]?.createdAt) {
+                eventDate = financialComments[0].createdAt.split('T')[0];
+            }
+
+            const key = commentId;
+            if (!eventGroups[key]) {
+                eventGroups[key] = {
+                    eventId: commentId,
+                    eventName: eventName,
+                    date: eventDate,
+                    items: [],
+                    income: 0,
+                    expenses: 0
+                };
+            }
+
+            financialComments.forEach(c => {
+                eventGroups[key].items.push({
+                    id: c.id,
+                    type: c.type,
+                    amount: Math.abs(c.amount),
+                    description: c.text,
+                    date: c.createdAt?.split('T')[0],
+                    authorName: c.authorName,
+                    source: 'comment'
+                });
+                if (c.type === 'income') {
+                    eventGroups[key].income += Math.abs(c.amount);
+                } else if (c.type === 'expense') {
+                    eventGroups[key].expenses += Math.abs(c.amount);
+                }
+            });
+
+            // Aggiorna nome evento se mancante
+            if (eventGroups[key].eventName === 'Evento' && eventName !== 'Evento') {
+                eventGroups[key].eventName = eventName;
+            }
+        }
+    });
+
+    // Se non ci sono dati
+    if (Object.keys(eventGroups).length === 0) {
         container.innerHTML = `
             <div class="card" style="margin-bottom:16px;">
                 <div class="card-header">
@@ -17437,34 +17612,12 @@ function renderEventsDashboard() {
                 <div class="empty-state" style="padding:20px; text-align:center;">
                     <div style="font-size:2rem; margin-bottom:8px;">🎉</div>
                     <div class="text-muted">Nessuna festa registrata</div>
-                    <div class="text-muted text-xs mt-1">Aggiungi guadagni e spese dai tuoi eventi</div>
+                    <div class="text-muted text-xs mt-1">Aggiungi incassi e spese dai commenti degli eventi</div>
                 </div>
             </div>
         `;
         return;
     }
-
-    // Raggruppa per evento
-    const eventGroups = {};
-    eventTx.forEach(t => {
-        const key = t.eventId || 'unknown';
-        if (!eventGroups[key]) {
-            eventGroups[key] = {
-                eventId: t.eventId,
-                eventName: t.eventName || 'Evento',
-                date: t.date,
-                transactions: [],
-                income: 0,
-                expenses: 0
-            };
-        }
-        eventGroups[key].transactions.push(t);
-        if (t.type === 'income') {
-            eventGroups[key].income += parseFloat(t.amount) || 0;
-        } else {
-            eventGroups[key].expenses += parseFloat(t.amount) || 0;
-        }
-    });
 
     // Converti in array e ordina per data (più recenti prima)
     const events = Object.values(eventGroups).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -17503,12 +17656,12 @@ function renderEventsDashboard() {
                     ${events.map(e => {
                         const profit = e.income - e.expenses;
                         return `
-                            <div class="event-finance-item" onclick="showEventTransactions('${e.eventId}')"
+                            <div class="event-finance-item" onclick="showEventFinanceDetail('${e.eventId}')"
                                  style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--border-color); cursor:pointer; transition:background 0.2s;"
                                  onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='transparent'">
                                 <div>
                                     <div style="font-weight:600;">${e.eventName}</div>
-                                    <div style="font-size:0.75rem; color:var(--text-secondary);">${formatDate(e.date)} • ${e.transactions.length} transazioni</div>
+                                    <div style="font-size:0.75rem; color:var(--text-secondary);">${formatDate(e.date)} • ${e.items.length} voci</div>
                                 </div>
                                 <div style="text-align:right;">
                                     <div style="font-weight:600; color:${profit >= 0 ? '#10b981' : '#ef4444'};">${formatCurrency(profit)}</div>
@@ -17525,14 +17678,60 @@ function renderEventsDashboard() {
     `;
 }
 
-// Mostra dettaglio transazioni per evento
-function showEventTransactions(eventId) {
-    const eventTx = (state.transactions || []).filter(t => t.eventId === eventId);
-    if (eventTx.length === 0) return;
+// Mostra dettaglio finanziario per evento (transazioni + commenti finanziari)
+function showEventFinanceDetail(eventId) {
+    // Raccogli tutte le voci finanziarie per questo evento
+    const items = [];
+    let eventName = 'Evento';
 
-    const eventName = eventTx[0].eventName || 'Evento';
-    const income = eventTx.filter(t => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-    const expenses = eventTx.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    // 1. Transazioni legate all'evento
+    const eventTx = (state.transactions || []).filter(t => t.eventId === eventId);
+    eventTx.forEach(t => {
+        items.push({
+            id: t.id,
+            type: t.type,
+            amount: parseFloat(t.amount) || 0,
+            description: t.description || (t.type === 'income' ? 'Guadagno' : 'Spesa'),
+            date: t.date,
+            authorName: null,
+            walletId: t.walletId,
+            source: 'transaction'
+        });
+        if (t.eventName) eventName = t.eventName;
+    });
+
+    // 2. Commenti finanziari dall'evento
+    const eventComments = state.eventComments?.[eventId] || [];
+    const financialComments = eventComments.filter(c => c.type && c.type !== 'normal' && c.amount);
+    financialComments.forEach(c => {
+        items.push({
+            id: c.id,
+            type: c.type,
+            amount: Math.abs(c.amount),
+            description: c.text || (c.type === 'income' ? 'Incasso' : 'Spesa'),
+            date: c.createdAt?.split('T')[0],
+            authorName: c.authorName,
+            walletId: null,
+            source: 'comment'
+        });
+    });
+
+    // Cerca nome evento nel calendario
+    if (eventName === 'Evento') {
+        const calEvent = state.calendarEvents?.find(e => e.id === eventId || e.iCalUID === eventId);
+        if (calEvent) eventName = calEvent.summary || 'Evento';
+        const localEvent = state.events?.find(e => e.id === eventId);
+        if (localEvent) eventName = localEvent.title || 'Evento';
+    }
+
+    if (items.length === 0) {
+        showToast('Nessun dato finanziario per questo evento', 'info');
+        return;
+    }
+
+    // Calcola totali
+    const income = items.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0);
+    const expenses = items.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
     const profit = income - expenses;
 
     const content = `
@@ -17552,17 +17751,19 @@ function showEventTransactions(eventId) {
                 </div>
             </div>
             <div style="max-height:300px; overflow-y:auto;">
-                ${eventTx.map(t => `
+                ${items.map(item => `
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color);">
                         <div>
-                            <div style="font-weight:500;">${t.description || (t.type === 'income' ? 'Guadagno' : 'Spesa')}</div>
+                            <div style="font-weight:500;">${item.description}</div>
                             <div style="font-size:0.75rem; color:var(--text-secondary);">
-                                ${formatDate(t.date)}
-                                ${t.walletId ? ' • ' + getWalletName(t.walletId) : ''}
+                                ${formatDate(item.date)}
+                                ${item.authorName ? ' • ' + item.authorName : ''}
+                                ${item.walletId ? ' • ' + getWalletName(item.walletId) : ''}
+                                <span style="opacity:0.6; margin-left:4px;">${item.source === 'comment' ? '💬' : '💳'}</span>
                             </div>
                         </div>
-                        <div style="font-weight:600; color:${t.type === 'income' ? '#10b981' : '#ef4444'};">
-                            ${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}
+                        <div style="font-weight:600; color:${item.type === 'income' ? '#10b981' : '#ef4444'};">
+                            ${item.type === 'income' ? '+' : '-'}${formatCurrency(item.amount)}
                         </div>
                     </div>
                 `).join('')}
@@ -17572,6 +17773,11 @@ function showEventTransactions(eventId) {
     `;
 
     showModal(`🎭 ${eventName}`, content);
+}
+
+// Mostra dettaglio transazioni per evento (legacy - manteniamo per compatibilità)
+function showEventTransactions(eventId) {
+    showEventFinanceDetail(eventId);
 }
 
 // Helper: ottieni nome wallet da ID
