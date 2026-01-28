@@ -30134,7 +30134,9 @@ function renderEventComments(eventId) {
         // Verifica se sono l'autore e se entro 5 minuti
         const isAuthor = comment.authorEmail?.toLowerCase() === myEmail;
         const commentAge = (now - new Date(comment.createdAt)) / 1000 / 60; // minuti
-        const canEditDelete = isAuthor && commentAge <= 5;
+        // Proprietario/Admin può sempre modificare/eliminare, animatori solo entro 5 minuti
+        const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+        const canEditDelete = isOwnerOrAdmin || (isAuthor && commentAge <= 5);
 
         // Evidenzia menzioni
         let text = (comment.text || '').replace(/@(\w+)/g, '<span class="mention">@$1</span>');
@@ -30185,15 +30187,18 @@ function renderEventComments(eventId) {
             detailHtml = `<span class="comment-amount expense">-€${Math.abs(comment.amount).toFixed(2)}</span>`;
         }
 
-        // Pulsanti modifica/elimina (solo entro 5 minuti)
+        // Pulsanti modifica/elimina (proprietario sempre, animatori entro 5 minuti)
         let editDeleteBtns = '';
         if (canEditDelete) {
             const remainingMins = Math.ceil(5 - commentAge);
+            // Mostra timer solo se non è owner e i minuti sono positivi
+            const timerText = (!isOwnerOrAdmin && remainingMins > 0) ?
+                `<span style="font-size:0.65rem; color:var(--text-secondary);">${remainingMins} min rimasti</span>` : '';
             editDeleteBtns = `
                 <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
                     <button class="btn btn-xs" onclick="editEventComment('${comment.id}')" style="padding:2px 6px; font-size:0.7rem;">✏️</button>
                     <button class="btn btn-xs btn-danger" onclick="deleteEventComment('${comment.id}')" style="padding:2px 6px; font-size:0.7rem;">🗑️</button>
-                    <span style="font-size:0.65rem; color:var(--text-secondary);">${remainingMins} min rimasti</span>
+                    ${timerText}
                 </div>
             `;
         }
@@ -30225,15 +30230,17 @@ async function deleteEventComment(commentId) {
 
     const comment = comments[commentIndex];
     const myEmail = state.profile?.email?.toLowerCase();
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    const isAuthor = comment.authorEmail?.toLowerCase() === myEmail;
 
-    // Verifica autore e tempo
-    if (comment.authorEmail?.toLowerCase() !== myEmail) {
+    // Verifica autore e tempo (proprietario può sempre eliminare)
+    if (!isOwnerOrAdmin && !isAuthor) {
         showToast('Puoi eliminare solo i tuoi commenti', 'error');
         return;
     }
 
     const commentAge = (new Date() - new Date(comment.createdAt)) / 1000 / 60;
-    if (commentAge > 5) {
+    if (!isOwnerOrAdmin && commentAge > 5) {
         showToast('Puoi eliminare solo entro 5 minuti', 'error');
         return;
     }
@@ -30269,15 +30276,17 @@ function editEventComment(commentId) {
     if (!comment) return;
 
     const myEmail = state.profile?.email?.toLowerCase();
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    const isAuthor = comment.authorEmail?.toLowerCase() === myEmail;
 
-    // Verifica autore e tempo
-    if (comment.authorEmail?.toLowerCase() !== myEmail) {
+    // Verifica autore e tempo (proprietario può sempre modificare)
+    if (!isOwnerOrAdmin && !isAuthor) {
         showToast('Puoi modificare solo i tuoi commenti', 'error');
         return;
     }
 
     const commentAge = (new Date() - new Date(comment.createdAt)) / 1000 / 60;
-    if (commentAge > 5) {
+    if (!isOwnerOrAdmin && commentAge > 5) {
         showToast('Puoi modificare solo entro 5 minuti', 'error');
         return;
     }
@@ -30837,7 +30846,14 @@ function canSeeFinancialComment(comment) {
     // L'autore può sempre vedere i propri commenti
     if (comment.authorEmail?.toLowerCase() === myEmail) return true;
 
-    // PRIORITÀ: Proprietario/organizzatore evento può SEMPRE vedere tutti i commenti finanziari
+    // PRIORITÀ ASSOLUTA: Owner/Admin dell'organizzazione può SEMPRE vedere tutti i commenti finanziari
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    if (isOwnerOrAdmin) {
+        console.log('👑 Owner/Admin organizzazione - può vedere tutti i commenti finanziari');
+        return true;
+    }
+
+    // Proprietario/organizzatore evento può vedere tutti i commenti finanziari
     // Cerca l'evento sia tra quelli Google che locali
     let event = null;
     let eventIsGoogle = false;
