@@ -4660,14 +4660,26 @@ async function ensureUserProfile() {
 
     try {
         console.log('📡 Loading profile for user:', currentUser.id);
-        // Cerca profilo esistente (usa organization_id per la relazione)
+        // Cerca profilo esistente - query semplificata senza join
         let { data: profile, error } = await sb
             .from('profiles')
-            .select('*, organization:organizations!profiles_organization_id_fkey(*)')
+            .select('*')
             .eq('id', currentUser.id)
             .single();
 
         console.log('📡 Profile query result:', { profile: !!profile, error });
+
+        // Carica organization separatamente
+        let organization = null;
+        if (profile?.organization_id) {
+            const { data: org } = await sb
+                .from('organizations')
+                .select('*')
+                .eq('id', profile.organization_id)
+                .single();
+            organization = org;
+            console.log('📡 Organization loaded:', org?.name);
+        }
 
         if (error && error.code === 'PGRST116') {
             // Nuovo utente - crea organizzazione e profilo
@@ -4698,7 +4710,7 @@ async function ensureUserProfile() {
                     avatar_url: currentUser.user_metadata?.avatar_url,
                     org_role: 'owner'
                 })
-                .select('*, organization:organizations!profiles_organization_id_fkey(*)')
+                .select('*')
                 .single();
 
             if (profileError) {
@@ -4714,6 +4726,7 @@ async function ensureUserProfile() {
                 .eq('id', org.id);
 
             profile = newProfile;
+            organization = org;
             showToast('Benvenuto in SAVERS Pro! 🎉', 'success');
         } else if (error) {
             console.error('Error loading profile:', error);
@@ -4722,12 +4735,12 @@ async function ensureUserProfile() {
 
         // Salva in variabili globali
         userProfile = profile;
-        userOrganization = profile?.organization;
+        userOrganization = organization;
 
         // Aggiorna anche lo state dell'app
         if (typeof state !== 'undefined') {
             state.profile = profile;
-            state.organization = profile?.organization;
+            state.organization = organization;
             state.organizationId = profile?.organization_id;
         }
 
