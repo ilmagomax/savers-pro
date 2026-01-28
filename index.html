@@ -182,23 +182,6 @@
              PAGE: HOME DASHBOARD
              ============================================ -->
         <div class="page active" id="homePage">
-
-            <!-- Cloud Sync Bar -->
-            <div class="cloud-sync-bar" id="syncStatus" style="display:none;">
-                <div class="sync-status">
-                    <div class="sync-indicator" id="syncIndicator"></div>
-                    <span class="sync-text" id="syncText">Non sincronizzato</span>
-                </div>
-                <div class="cloud-user">
-                    <div class="cloud-user-icon">☁️</div>
-                    <span id="cloudUserName">Non connesso</span>
-                    <button class="btn btn-sm btn-secondary" onclick="forceSync()" style="padding:6px 10px; font-size:0.75rem;">🔄</button>
-                </div>
-            </div>
-
-            <!-- API Stats Widget (cliccabile per dettagli) -->
-            <div id="apiStatsWidget" onclick="showApiStatsModal()" style="cursor:pointer;padding:6px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px;text-align:center;"></div>
-
             <!-- Greeting -->
             <div class="card card-gradient mb-2">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1609,18 +1592,6 @@
                             <span class="badge badge-secondary" id="settingsProfileXP">0 XP</span>
                         </div>
                     </div>
-                </div>
-
-                <!-- Sync Status Unificato -->
-                <div class="toggle-row" style="margin-top:12px;" id="cloudSyncSection">
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <span style="font-size:1.3rem;">☁️</span>
-                        <div>
-                            <div class="toggle-label">Sincronizzazione</div>
-                            <div class="toggle-desc">Ultima sync: <span id="lastSyncText">Mai</span></div>
-                        </div>
-                    </div>
-                    <button class="btn btn-secondary btn-sm" onclick="forceSync()">🔄 Sync</button>
                 </div>
 
                 <!-- Google Calendar Status -->
@@ -5785,15 +5756,6 @@ let isLoggedIn = false;
 let syncInProgress = false;
 let lastSyncTime = null;
 let initialLoadComplete = false; // Flag per evitare sync prima del caricamento
-
-// Contatore chiamate API (per monitoraggio quota)
-let apiCallStats = {
-    today: new Date().toISOString().split('T')[0],
-    totalCalls: 0,
-    callsByAction: {},
-    lastReset: Date.now()
-};
-
 // Stato Google Calendar/Tasks
 let googleAuthInstance = null;
 let isGoogleSignedIn = false;
@@ -7639,9 +7601,6 @@ async function apiCall(action, data = {}) {
     const jsonPayload = JSON.stringify(payload);
     console.log('📡 API Call:', action, '- size:', jsonPayload.length);
 
-    // Traccia chiamata API per monitoraggio quota
-    trackApiCall(action);
-
     // Azioni che DEVONO usare POST (payload potenzialmente grandi o che modificano dati)
     const forcePostActions = [
         'updateSharedProject',
@@ -7863,144 +7822,6 @@ function localStorageFallback(action, data) {
             return { success: false, message: 'Azione non supportata' };
     }
 }
-
-// ============================================
-// API CALL TRACKING (Monitoraggio quota)
-// ============================================
-
-function trackApiCall(action) {
-    const today = new Date().toISOString().split('T')[0];
-
-    // Reset contatori se è un nuovo giorno
-    if (apiCallStats.today !== today) {
-        apiCallStats = {
-            today: today,
-            totalCalls: 0,
-            callsByAction: {},
-            lastReset: Date.now()
-        };
-        // Salva reset in localStorage
-        localStorage.setItem('savers_api_stats', JSON.stringify(apiCallStats));
-    }
-
-    // Incrementa contatori
-    apiCallStats.totalCalls++;
-    apiCallStats.callsByAction[action] = (apiCallStats.callsByAction[action] || 0) + 1;
-
-    // Salva statistiche
-    localStorage.setItem('savers_api_stats', JSON.stringify(apiCallStats));
-
-    // Aggiorna widget se visibile
-    updateApiStatsWidget();
-
-    // Warning se si avvicina al limite (80% di 20.000)
-    if (apiCallStats.totalCalls === 16000) {
-        showToast('⚠️ Attenzione: 80% quota API giornaliera raggiunta!', 'warning');
-    }
-}
-
-function loadApiStats() {
-    const saved = localStorage.getItem('savers_api_stats');
-    if (saved) {
-        const stats = JSON.parse(saved);
-        const today = new Date().toISOString().split('T')[0];
-        // Usa solo se è lo stesso giorno
-        if (stats.today === today) {
-            apiCallStats = stats;
-        }
-    }
-}
-
-function updateApiStatsWidget() {
-    const widget = document.getElementById('apiStatsWidget');
-    if (!widget) return;
-
-    const percentage = ((apiCallStats.totalCalls / 20000) * 100).toFixed(2);
-    const color = percentage > 80 ? '#ef4444' : percentage > 50 ? '#f59e0b' : '#10b981';
-
-    widget.innerHTML = `
-        <div style="font-size:0.75rem;color:var(--text-secondary);">
-            📊 API Oggi: <strong style="color:${color}">${apiCallStats.totalCalls.toLocaleString()}</strong> / 20.000
-            <span style="color:${color}">(${percentage}%)</span>
-        </div>
-    `;
-}
-
-function showApiStatsModal() {
-    // Ordina azioni per numero di chiamate (decrescente)
-    const sortedActions = Object.entries(apiCallStats.callsByAction)
-        .sort((a, b) => b[1] - a[1]);
-
-    const actionsHtml = sortedActions.length > 0
-        ? sortedActions.map(([action, count]) => `
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border-color);">
-                <span style="font-family:monospace;font-size:0.85rem;">${action}</span>
-                <span style="font-weight:600;">${count}</span>
-            </div>
-        `).join('')
-        : '<div class="text-muted">Nessuna chiamata registrata</div>';
-
-    const percentage = ((apiCallStats.totalCalls / 20000) * 100).toFixed(2);
-    const color = percentage > 80 ? '#ef4444' : percentage > 50 ? '#f59e0b' : '#10b981';
-
-    const modalHtml = `
-        <div style="padding:16px;">
-            <h3 style="margin-bottom:16px;">📊 Statistiche API - Oggi</h3>
-
-            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;margin-bottom:16px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                    <span>Chiamate totali:</span>
-                    <strong style="font-size:1.5rem;color:${color}">${apiCallStats.totalCalls.toLocaleString()}</strong>
-                </div>
-                <div style="background:var(--bg-tertiary);border-radius:8px;height:12px;overflow:hidden;">
-                    <div style="background:${color};height:100%;width:${Math.min(percentage, 100)}%;transition:width 0.3s;"></div>
-                </div>
-                <div style="text-align:right;font-size:0.75rem;color:var(--text-secondary);margin-top:4px;">
-                    ${percentage}% del limite giornaliero (20.000)
-                </div>
-            </div>
-
-            <h4 style="margin-bottom:8px;">Dettaglio per azione:</h4>
-            <div style="max-height:300px;overflow-y:auto;">
-                ${actionsHtml}
-            </div>
-
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color);font-size:0.75rem;color:var(--text-secondary);">
-                <strong>Limiti Google Apps Script (account gratuito):</strong><br>
-                • 20.000 esecuzioni/giorno per progetto<br>
-                • 60 richieste/minuto per utente (Sheets API)<br>
-                • Reset alle 00:00 UTC
-            </div>
-        </div>
-    `;
-
-    // Usa il modal generico se esiste, altrimenti alert
-    const existingModal = document.getElementById('apiStatsModal');
-    if (existingModal) {
-        existingModal.querySelector('.modal-body').innerHTML = modalHtml;
-        openModal('apiStatsModal');
-    } else {
-        // Crea modal temporaneo
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.id = 'tempApiStatsModal';
-        modal.innerHTML = `
-            <div class="modal" style="max-width:400px;">
-                <div class="modal-header">
-                    <h3>📊 Statistiche API</h3>
-                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-                </div>
-                <div class="modal-body">${modalHtml}</div>
-            </div>
-        `;
-        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-        document.body.appendChild(modal);
-        modal.classList.add('active');
-    }
-}
-
-// Carica stats all'avvio
-loadApiStats();
 
 // ============================================
 // AUTHENTICATION FUNCTIONS
@@ -8580,68 +8401,9 @@ function updateLoginUI() {
 // ============================================
 
 async function syncToCloud() {
-    if (!isLoggedIn || !currentUser || syncInProgress) return;
-
-    // Non sincronizzare prima che il caricamento iniziale sia completo
-    if (!initialLoadComplete) {
-        console.warn('⚠️ Sync bloccato: caricamento iniziale non completato');
-        return;
-    }
-
-    // Niente da sincronizzare
-    if (changeTracker.dirtyCollections.size === 0 && !needsFullSync()) {
-        console.log('✅ Nessuna modifica da sincronizzare');
-        return;
-    }
-
-    syncInProgress = true;
-    updateSyncIndicator('syncing');
-
-    try {
-        let response;
-
-        // Decidi se fare full sync o incremental
-        if (needsFullSync() || changeTracker.changeCount > changeTracker.immediatesSyncThreshold) {
-            // FULL SYNC: ogni 24 ore o se troppe modifiche accumulate
-            console.log('🔄 Esecuzione FULL SYNC...');
-            response = await apiCall('syncFullState', {
-                state: state
-            });
-
-            if (response.success) {
-                changeTracker.lastFullSync = Date.now();
-            }
-        } else if (changeTracker.dirtyCollections.size > 0) {
-            // INCREMENTAL SYNC: solo le modifiche
-            const incrementalData = prepareIncrementalSyncData();
-            console.log('⚡ Esecuzione INCREMENTAL SYNC:', Array.from(changeTracker.dirtyCollections));
-
-            response = await apiCall('syncIncrementalState', incrementalData);
-
-            // Fallback a full sync se incremental non supportato
-            if (response.error === 'INCREMENTAL_NOT_SUPPORTED') {
-                console.log('⚠️ Incremental sync non supportato, fallback a full sync');
-                response = await apiCall('syncFullState', { state: state });
-                changeTracker.lastFullSync = Date.now();
-            }
-        }
-
-        if (response?.success) {
-            lastSyncTime = new Date();
-            updateSyncIndicator('synced');
-            clearChangeTracker(); // Pulisci il tracker dopo sync riuscita
-            console.log('☁️ Cloud sync completato:', response.timestamp || new Date().toISOString());
-        } else {
-            console.error('Sync failed:', response?.message);
-            updateSyncIndicator('error');
-        }
-    } catch (error) {
-        console.error('Sync error:', error);
-        updateSyncIndicator('error');
-        showToast('Errore sincronizzazione cloud', 'error');
-    }
-
-    syncInProgress = false;
+    // LEGACY: Funzione disabilitata - i dati sono già salvati direttamente su Supabase
+    // Questa funzione rimane come stub per evitare errori nelle chiamate esistenti
+    console.log('ℹ️ syncToCloud: Funzione legacy disabilitata - i dati sono salvati su Supabase');
 }
 
 async function loadFromCloud() {
@@ -8821,65 +8583,13 @@ async function loadFromCloud() {
 }
 
 function updateSyncIndicator(status) {
-    const indicator = document.getElementById('syncIndicator');
-    const text = document.getElementById('syncText');
-    const lastSyncTextEl = document.getElementById('lastSyncText');
-
-    // Aggiungi/rimuovi classe body per indicare sync in corso (senza bloccare click)
-    if (status === 'syncing') {
-        document.body.classList.add('is-syncing');
-    } else {
-        document.body.classList.remove('is-syncing');
-    }
-
-    switch (status) {
-        case 'syncing':
-            if (indicator) indicator.className = 'sync-indicator syncing';
-            if (text) text.textContent = 'Sincronizzazione...';
-            break;
-        case 'synced':
-            if (indicator) indicator.className = 'sync-indicator synced';
-            const time = lastSyncTime ? lastSyncTime.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : 'ora';
-            if (text) text.textContent = `Sincronizzato alle ${time}`;
-            // Aggiorna anche nella pagina Settings
-            if (lastSyncTextEl && lastSyncTime) {
-                lastSyncTextEl.textContent = lastSyncTime.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-            }
-            break;
-        case 'error':
-            if (indicator) indicator.className = 'sync-indicator error';
-            if (text) text.textContent = 'Errore sincronizzazione';
-            if (lastSyncTextEl) lastSyncTextEl.textContent = 'Errore';
-            // Auto-retry dopo 30 secondi in caso di errore
-            setTimeout(() => {
-                if (isLoggedIn && !syncInProgress) {
-                    console.log('🔄 Tentativo automatico di risincronizzazione...');
-                    syncToCloud();
-                }
-            }, 30000);
-            break;
-    }
+    // LEGACY: Funzione disabilitata - gli elementi UI sono stati rimossi
 }
 
 // Forza sincronizzazione manuale
 async function forceSync() {
-    if (!isLoggedIn) {
-        showToast('Accedi per sincronizzare', 'warning');
-        openModal('cloudLoginModal');
-        return;
-    }
-
-    try {
-        await syncToCloud();
-        // Il toast di successo viene mostrato solo se non c'è stato errore
-        const indicator = document.getElementById('syncIndicator');
-        if (indicator && !indicator.classList.contains('error')) {
-            showToast('Sincronizzazione completata! ☁️', 'success');
-        }
-    } catch (error) {
-        console.error('ForceSync error:', error);
-        // L'errore è già gestito in syncToCloud
-    }
+    // LEGACY: Funzione disabilitata - i dati sono già salvati direttamente su Supabase
+    showToast('I dati sono salvati automaticamente su Supabase', 'info');
 }
 
 // ============================================
@@ -13031,22 +12741,22 @@ function renderGoalsList() {
     }
 
     container.innerHTML = goals.map(goal => {
-        const progress = goal.keyResults ? 
+        const progress = goal.keyResults ?
             Math.round((goal.keyResults.filter(kr => kr.completed).length / goal.keyResults.length) * 100) : 0;
-        
+
         return `
-            <div class="goal-card">
+            <div class="goal-card" onclick="openGoalDetail('${goal.id}')" style="cursor:pointer;">
                 <div class="goal-header">
                     <div class="goal-title">${goal.title}</div>
-                    <div class="goal-progress-text">${progress}%</div>
+                    <div class="goal-progress-text">${isNaN(progress) ? '0' : progress}%</div>
                 </div>
                 <div class="goal-bar">
-                    <div class="goal-bar-fill" style="width:${progress}%"></div>
+                    <div class="goal-bar-fill" style="width:${isNaN(progress) ? 0 : progress}%"></div>
                 </div>
                 ${goal.keyResults && goal.keyResults.length > 0 ? `
                     <div class="key-results">
                         ${goal.keyResults.map((kr, i) => `
-                            <div class="key-result ${kr.completed ? 'completed' : ''}" onclick="toggleKeyResult('${goal.id}', ${i})">
+                            <div class="key-result ${kr.completed ? 'completed' : ''}" onclick="event.stopPropagation(); toggleKeyResult('${goal.id}', ${i})">
                                 <div class="kr-checkbox">${kr.completed ? '✓' : ''}</div>
                                 <div class="kr-text">${kr.text}</div>
                             </div>
@@ -13182,6 +12892,158 @@ function toggleKeyResult(goalId, krIndex) {
     checkBadges();
 }
 
+// Open goal detail modal with edit/delete options
+function openGoalDetail(goalId) {
+    const goal = (state.goals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const progress = goal.keyResults && goal.keyResults.length > 0 ?
+        Math.round((goal.keyResults.filter(kr => kr.completed).length / goal.keyResults.length) * 100) : 0;
+
+    const modalContent = `
+        <div style="text-align: left; padding: 10px 0;">
+            <div style="font-size: 1.3em; font-weight: 600; margin-bottom: 15px;">
+                🎯 ${goal.title}
+            </div>
+            ${goal.description ? `<div style="margin: 8px 0; color: var(--text-secondary);">${goal.description}</div>` : ''}
+            <div style="margin: 12px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Progresso</span>
+                    <span style="font-weight: 600;">${progress}%</span>
+                </div>
+                <div style="height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                    <div style="height: 100%; width: ${progress}%; background: var(--primary); border-radius: 4px;"></div>
+                </div>
+            </div>
+            <div style="margin: 8px 0;"><strong>📅 Periodo:</strong> ${goal.period || goal.timeframe || 'N/D'}</div>
+            <div style="margin: 8px 0;"><strong>⏰ Scadenza:</strong> ${goal.deadline ? formatDate(goal.deadline) : 'N/D'}</div>
+            ${goal.keyResults && goal.keyResults.length > 0 ? `
+                <div style="margin-top: 15px;">
+                    <strong>📋 Key Results:</strong>
+                    <ul style="margin: 8px 0; padding-left: 20px;">
+                        ${goal.keyResults.map(kr => `<li style="margin: 4px 0; ${kr.completed ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${kr.text}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="editGoal('${goalId}')" style="flex: 1; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                ✏️ Modifica
+            </button>
+            <button onclick="confirmDeleteGoal('${goalId}')" style="flex: 1; padding: 12px; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                🗑️ Elimina
+            </button>
+        </div>
+    `;
+
+    showModal('Dettaglio Obiettivo', modalContent);
+}
+
+// Edit goal
+function editGoal(goalId) {
+    closeModal('dynamicModal');
+    const goal = (state.goals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const periodOptions = ['weekly', 'monthly', 'quarterly', 'yearly'].map(p =>
+        `<option value="${p}" ${(goal.period || goal.timeframe) === p ? 'selected' : ''}>${p === 'weekly' ? 'Settimanale' : p === 'monthly' ? 'Mensile' : p === 'quarterly' ? 'Trimestrale' : 'Annuale'}</option>`
+    ).join('');
+
+    const modalContent = `
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Titolo *</label>
+                <input type="text" id="editGoalTitle" value="${goal.title || ''}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Descrizione</label>
+                <textarea id="editGoalDesc" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; min-height: 80px;">${goal.description || ''}</textarea>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Periodo</label>
+                <select id="editGoalPeriod" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+                    ${periodOptions}
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Scadenza</label>
+                <input type="date" id="editGoalDeadline" value="${goal.deadline || ''}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <button onclick="saveEditedGoal('${goalId}')" style="width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 10px;">
+                💾 Salva Modifiche
+            </button>
+        </div>
+    `;
+
+    showModal('Modifica Obiettivo', modalContent);
+}
+
+// Save edited goal
+async function saveEditedGoal(goalId) {
+    const goal = (state.goals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const title = document.getElementById('editGoalTitle').value.trim();
+    if (!title) {
+        showToast('Inserisci un titolo', 'error');
+        return;
+    }
+
+    const updates = {
+        title: title,
+        description: document.getElementById('editGoalDesc').value,
+        period: document.getElementById('editGoalPeriod').value,
+        timeframe: document.getElementById('editGoalPeriod').value,
+        deadline: document.getElementById('editGoalDeadline').value
+    };
+
+    Object.assign(goal, updates);
+
+    const sb = getSupabase();
+    if (sb && currentUser && goal._supabaseId) {
+        await updateGoalInDB(goal._supabaseId, {
+            title: updates.title,
+            description: updates.description,
+            timeframe: updates.timeframe,
+            due_date: updates.deadline
+        });
+    } else {
+        saveStateAndSync('goals');
+    }
+
+    closeModal('dynamicModal');
+    renderGoalsPage();
+    showToast('Obiettivo aggiornato!', 'success');
+}
+
+// Confirm delete goal
+function confirmDeleteGoal(goalId) {
+    closeModal('dynamicModal');
+    if (confirm('Sei sicuro di voler eliminare questo obiettivo?')) {
+        deleteGoal(goalId);
+    }
+}
+
+// Delete goal
+async function deleteGoal(goalId) {
+    const goal = (state.goals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    state.goals = state.goals.filter(g => g.id !== goalId);
+
+    const sb = getSupabase();
+    if (sb && currentUser && goal._supabaseId) {
+        await deleteGoalFromDB(goal._supabaseId);
+    } else {
+        saveStateAndSync('goals');
+    }
+
+    renderGoalsPage();
+    showToast('Obiettivo eliminato', 'success');
+}
+
 function filterGoals(period) {
     event.target.parentElement.querySelectorAll('.btn').forEach(b => {
         b.className = 'btn btn-sm btn-secondary';
@@ -13313,15 +13175,116 @@ function viewNote(noteId) {
         return;
     }
 
-    // Popola il form con i dati della nota per visualizzazione/modifica
-    document.getElementById('noteTitle').value = note.title || '';
-    document.getElementById('noteContent').value = note.content || '';
+    const modalContent = `
+        <div style="text-align: left; padding: 10px 0;">
+            <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 15px;">
+                ${note.title || 'Senza titolo'}
+            </div>
+            <div style="white-space: pre-wrap; line-height: 1.6; margin-bottom: 15px; max-height: 300px; overflow-y: auto; padding: 10px; background: var(--bg-secondary); border-radius: 8px;">
+                ${note.content || ''}
+            </div>
+            ${note.tags && note.tags.length > 0 ? `
+                <div style="margin: 10px 0;">
+                    ${note.tags.map(tag => `<span style="display: inline-block; padding: 4px 10px; background: var(--primary-light); color: var(--primary); border-radius: 12px; font-size: 0.85em; margin-right: 5px;">#${tag}</span>`).join('')}
+                </div>
+            ` : ''}
+            <div style="color: var(--text-muted); font-size: 0.85em; margin-top: 10px;">
+                Creata: ${formatDate(note.createdAt.split('T')[0])}
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="editNote('${noteId}')" style="flex: 1; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                ✏️ Modifica
+            </button>
+            <button onclick="confirmDeleteNote('${noteId}')" style="flex: 1; padding: 12px; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                🗑️ Elimina
+            </button>
+        </div>
+    `;
 
-    // Salva l'ID della nota in editing per permettere aggiornamento
-    window.currentEditingNoteId = noteId;
+    showModal('📝 Dettaglio Nota', modalContent);
+}
 
-    // Apri il modal delle note
-    openModal('noteModal');
+// Edit note
+function editNote(noteId) {
+    closeModal('dynamicModal');
+    const note = (state.notes || []).find(n => n.id === noteId);
+    if (!note) return;
+
+    const modalContent = `
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Titolo</label>
+                <input type="text" id="editNoteTitle" value="${note.title || ''}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Contenuto *</label>
+                <textarea id="editNoteContent" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; min-height: 150px;">${note.content || ''}</textarea>
+            </div>
+            <button onclick="saveEditedNote('${noteId}')" style="width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 10px;">
+                💾 Salva Modifiche
+            </button>
+        </div>
+    `;
+
+    showModal('Modifica Nota', modalContent);
+}
+
+// Save edited note
+async function saveEditedNote(noteId) {
+    const note = (state.notes || []).find(n => n.id === noteId);
+    if (!note) return;
+
+    const content = document.getElementById('editNoteContent').value.trim();
+    if (!content) {
+        showToast('Inserisci un contenuto', 'error');
+        return;
+    }
+
+    note.title = document.getElementById('editNoteTitle').value.trim() || 'Senza titolo';
+    note.content = content;
+    note.updatedAt = new Date().toISOString();
+
+    const sb = getSupabase();
+    if (sb && currentUser && note._supabaseId) {
+        await updateNoteInDB(note._supabaseId, {
+            title: note.title,
+            content: note.content
+        });
+    } else {
+        saveStateAndSync('notes');
+    }
+
+    closeModal('dynamicModal');
+    renderNotesList();
+    showToast('Nota aggiornata!', 'success');
+}
+
+// Confirm delete note
+function confirmDeleteNote(noteId) {
+    closeModal('dynamicModal');
+    if (confirm('Sei sicuro di voler eliminare questa nota?')) {
+        deleteNote(noteId);
+    }
+}
+
+// Delete note
+async function deleteNote(noteId) {
+    const note = (state.notes || []).find(n => n.id === noteId);
+    if (!note) return;
+
+    state.notes = state.notes.filter(n => n.id !== noteId);
+
+    const sb = getSupabase();
+    if (sb && currentUser && note._supabaseId) {
+        await deleteNoteFromDB(note._supabaseId);
+    } else {
+        saveStateAndSync('notes');
+    }
+
+    renderNotesList();
+    showToast('Nota eliminata', 'success');
 }
 
 // Alias per compatibilità
@@ -16396,23 +16359,258 @@ function openMoneyGoalDetail(goalId) {
     const goal = (state.moneyGoals || []).find(g => g.id === goalId);
     if (!goal) return;
 
-    // Per ora mostra un prompt semplice per aggiornare il progresso
-    const newAmount = prompt(`Aggiorna importo risparmiato per "${goal.name}":\nAttuale: ${formatCurrency(goal.current)}`, goal.current);
+    const current = parseFloat(goal.current) || 0;
+    const target = parseFloat(goal.target) || 1;
+    const progress = Math.min(100, Math.round((current / target) * 100));
+    const remaining = Math.max(0, target - current);
+    const isComplete = progress >= 100;
 
-    if (newAmount !== null && !isNaN(parseFloat(newAmount))) {
-        goal.current = parseFloat(newAmount);
-        saveStateAndSync('moneyGoals', goalId);
-        renderFinancePage();
+    const content = `
+        <div style="text-align:center; margin-bottom:16px;">
+            <div style="font-size:3rem; margin-bottom:8px;">${goal.icon || '🎯'}</div>
+            <h3 style="margin:0; font-size:1.25rem;">${goal.name}</h3>
+            ${isComplete ? '<div style="color:#10b981; font-weight:600; margin-top:4px;">🎉 Obiettivo raggiunto!</div>' : ''}
+        </div>
+        <div style="background:var(--bg-tertiary); border-radius:12px; padding:16px; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:var(--text-secondary);">Progresso</span>
+                <span style="font-weight:600;">${progress}%</span>
+            </div>
+            <div style="background:var(--bg-secondary); border-radius:8px; height:8px; overflow:hidden;">
+                <div style="background:${isComplete ? 'linear-gradient(90deg,#10b981,#059669)' : 'var(--primary)'}; height:100%; width:${progress}%; transition:width 0.3s;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-top:12px; font-size:0.9rem;">
+                <div>
+                    <div style="color:var(--text-secondary); font-size:0.75rem;">Risparmiato</div>
+                    <div style="font-weight:600; color:#10b981;">${formatCurrency(current)}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="color:var(--text-secondary); font-size:0.75rem;">Obiettivo</div>
+                    <div style="font-weight:600;">${formatCurrency(target)}</div>
+                </div>
+            </div>
+            ${!isComplete ? `<div style="text-align:center; margin-top:12px; color:var(--text-secondary); font-size:0.85rem;">Mancano ancora ${formatCurrency(remaining)}</div>` : ''}
+            ${goal.deadline ? `<div style="text-align:center; margin-top:8px; color:var(--text-secondary); font-size:0.8rem;">📅 Scadenza: ${new Date(goal.deadline).toLocaleDateString('it-IT')}</div>` : ''}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <button onclick="updateMoneyGoalProgress('${goal.id}')" class="btn btn-primary" style="width:100%;">
+                💰 Aggiorna Importo
+            </button>
+            <button onclick="editMoneyGoal('${goal.id}')" class="btn btn-secondary" style="width:100%;">
+                ✏️ Modifica Obiettivo
+            </button>
+            <button onclick="confirmDeleteMoneyGoal('${goal.id}')" class="btn btn-secondary" style="width:100%; color:#ef4444;">
+                🗑️ Elimina
+            </button>
+        </div>
+    `;
 
-        if (goal.current >= goal.target) {
-            showToast(`🎉 Hai raggiunto l'obiettivo "${goal.name}"!`, 'success');
-            addXP(50);
-            state.stats.goalsCompleted = (state.stats.goalsCompleted || 0) + 1;
-            triggerConfetti();
-        } else {
-            showToast('Obiettivo aggiornato!', 'success');
-        }
+    showModal(`${goal.icon || '🎯'} ${goal.name}`, content);
+}
+
+// Aggiorna solo l'importo risparmiato
+function updateMoneyGoalProgress(goalId) {
+    const goal = (state.moneyGoals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const content = `
+        <div style="margin-bottom:16px;">
+            <label style="display:block; margin-bottom:8px; font-weight:500;">Importo attuale risparmiato</label>
+            <input type="number" id="moneyGoalCurrentAmount" value="${goal.current || 0}"
+                   style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:1.1rem;"
+                   step="0.01" min="0">
+        </div>
+        <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.9rem;">
+                <span style="color:var(--text-secondary);">Obiettivo:</span>
+                <span style="font-weight:600;">${formatCurrency(goal.target)}</span>
+            </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+            <button onclick="saveMoneyGoalProgress('${goal.id}')" class="btn btn-primary" style="flex:1;">Salva</button>
+        </div>
+    `;
+
+    showModal('💰 Aggiorna Risparmio', content);
+}
+
+async function saveMoneyGoalProgress(goalId) {
+    const goal = (state.moneyGoals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const input = document.getElementById('moneyGoalCurrentAmount');
+    const newAmount = parseFloat(input?.value);
+
+    if (isNaN(newAmount) || newAmount < 0) {
+        showToast('Inserisci un importo valido', 'error');
+        return;
     }
+
+    const wasComplete = goal.current >= goal.target;
+    goal.current = newAmount;
+
+    // Aggiorna su Supabase
+    await updateMoneyGoalInDB(goalId, { current: newAmount });
+
+    closeModal('dynamicModal');
+    renderFinancePage();
+
+    if (!wasComplete && goal.current >= goal.target) {
+        showToast(`🎉 Hai raggiunto l'obiettivo "${goal.name}"!`, 'success');
+        addXP(50);
+        state.stats.goalsCompleted = (state.stats.goalsCompleted || 0) + 1;
+        triggerConfetti();
+    } else {
+        showToast('Importo aggiornato!', 'success');
+    }
+}
+
+// Modifica obiettivo finanziario
+function editMoneyGoal(goalId) {
+    const goal = (state.moneyGoals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const icons = ['🎯', '🏦', '🏠', '🚗', '✈️', '💻', '📱', '🎓', '💍', '🏖️', '🎁', '💎'];
+
+    const content = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Nome obiettivo</label>
+                <input type="text" id="editMoneyGoalName" value="${goal.name || ''}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);"
+                       placeholder="Es: Fondo emergenza">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Icona</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    ${icons.map(icon => `
+                        <button type="button" onclick="selectMoneyGoalIcon('${icon}')"
+                                class="icon-btn ${goal.icon === icon ? 'active' : ''}"
+                                style="width:40px; height:40px; border-radius:8px; border:2px solid ${goal.icon === icon ? 'var(--primary)' : 'var(--border-color)'}; background:var(--bg-secondary); font-size:1.2rem; cursor:pointer;">
+                            ${icon}
+                        </button>
+                    `).join('')}
+                </div>
+                <input type="hidden" id="editMoneyGoalIcon" value="${goal.icon || '🎯'}">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Importo obiettivo (€)</label>
+                <input type="number" id="editMoneyGoalTarget" value="${goal.target || 0}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);"
+                       step="0.01" min="0" placeholder="Es: 10000">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Importo attuale (€)</label>
+                <input type="number" id="editMoneyGoalCurrent" value="${goal.current || 0}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);"
+                       step="0.01" min="0">
+            </div>
+            <div>
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Scadenza (opzionale)</label>
+                <input type="date" id="editMoneyGoalDeadline" value="${goal.deadline || ''}"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary);">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+                <button onclick="saveEditedMoneyGoal('${goal.id}')" class="btn btn-primary" style="flex:1;">Salva</button>
+            </div>
+        </div>
+    `;
+
+    showModal('✏️ Modifica Obiettivo', content);
+}
+
+function selectMoneyGoalIcon(icon) {
+    document.getElementById('editMoneyGoalIcon').value = icon;
+    // Aggiorna stile bottoni
+    document.querySelectorAll('#dynamicModalBody .icon-btn').forEach(btn => {
+        btn.style.borderColor = btn.textContent.trim() === icon ? 'var(--primary)' : 'var(--border-color)';
+    });
+}
+
+async function saveEditedMoneyGoal(goalId) {
+    const goal = (state.moneyGoals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const name = document.getElementById('editMoneyGoalName')?.value?.trim();
+    const icon = document.getElementById('editMoneyGoalIcon')?.value || '🎯';
+    const target = parseFloat(document.getElementById('editMoneyGoalTarget')?.value);
+    const current = parseFloat(document.getElementById('editMoneyGoalCurrent')?.value);
+    const deadline = document.getElementById('editMoneyGoalDeadline')?.value || null;
+
+    if (!name) {
+        showToast('Inserisci un nome per l\'obiettivo', 'error');
+        return;
+    }
+    if (isNaN(target) || target <= 0) {
+        showToast('Inserisci un importo obiettivo valido', 'error');
+        return;
+    }
+
+    // Aggiorna localmente
+    goal.name = name;
+    goal.icon = icon;
+    goal.target = target;
+    goal.current = isNaN(current) ? 0 : current;
+    goal.deadline = deadline;
+
+    // Aggiorna su Supabase
+    await updateMoneyGoalInDB(goalId, {
+        name: goal.name,
+        icon: goal.icon,
+        target: goal.target,
+        current: goal.current,
+        deadline: goal.deadline
+    });
+
+    closeModal('dynamicModal');
+    renderFinancePage();
+    showToast('Obiettivo aggiornato!', 'success');
+}
+
+// Conferma eliminazione obiettivo finanziario
+function confirmDeleteMoneyGoal(goalId) {
+    const goal = (state.moneyGoals || []).find(g => g.id === goalId);
+    if (!goal) return;
+
+    const content = `
+        <div style="text-align:center; padding:16px 0;">
+            <div style="font-size:3rem; margin-bottom:12px;">⚠️</div>
+            <p style="margin-bottom:16px;">Sei sicuro di voler eliminare l'obiettivo "<strong>${goal.name}</strong>"?</p>
+            <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:24px;">Questa azione non può essere annullata.</p>
+            <div style="display:flex; gap:12px;">
+                <button onclick="closeModal('dynamicModal')" class="btn btn-secondary" style="flex:1;">Annulla</button>
+                <button onclick="deleteMoneyGoal('${goal.id}')" class="btn" style="flex:1; background:#ef4444; color:white;">Elimina</button>
+            </div>
+        </div>
+    `;
+
+    showModal('Elimina Obiettivo', content);
+}
+
+async function deleteMoneyGoal(goalId) {
+    const goalIndex = (state.moneyGoals || []).findIndex(g => g.id === goalId);
+    if (goalIndex === -1) return;
+
+    const goalBackup = state.moneyGoals[goalIndex];
+
+    // Rimuovi localmente
+    state.moneyGoals.splice(goalIndex, 1);
+
+    // Elimina da Supabase
+    await deleteMoneyGoalFromDB(goalId);
+
+    closeModal('dynamicModal');
+    renderFinancePage();
+    showToast('Obiettivo eliminato', 'success');
+
+    // Registra undo
+    undoSystem.register({
+        type: 'deleteMoneyGoal',
+        data: goalBackup,
+        message: '🗑️ Obiettivo finanziario eliminato'
+    });
 }
 
 function renderBudget() {
@@ -17136,7 +17334,7 @@ function renderCurrentlyReading() {
     container.innerHTML = reading.map(book => {
         const progress = book.totalPages > 0 ? Math.round((book.pagesRead / book.totalPages) * 100) : 0;
         return `
-            <div class="book-card" onclick="updateBookProgress('${book.id}')">
+            <div class="book-card" onclick="openUserBookDetail('${book.id}')" style="cursor:pointer;">
                 <div class="book-cover">📖</div>
                 <div class="book-info">
                     <div class="book-title">${book.title}</div>
@@ -17267,6 +17465,163 @@ function updateBookProgress(bookId) {
 
     saveStateAndSync();
     renderBooksPage();
+}
+
+// Open user book detail with edit/delete options
+function openUserBookDetail(bookId) {
+    const book = (state.books || []).find(b => b.id === bookId);
+    if (!book) return;
+
+    const progress = book.totalPages > 0 ? Math.round((book.pagesRead / book.totalPages) * 100) : 0;
+
+    const modalContent = `
+        <div style="text-align: left; padding: 10px 0;">
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                <div style="font-size: 3rem;">📖</div>
+                <div>
+                    <div style="font-size: 1.2em; font-weight: 600;">${book.title}</div>
+                    <div style="color: var(--text-secondary);">${book.author || 'Autore sconosciuto'}</div>
+                </div>
+            </div>
+            <div style="margin: 12px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Progresso lettura</span>
+                    <span style="font-weight: 600;">${progress}%</span>
+                </div>
+                <div style="height: 10px; background: var(--border); border-radius: 5px; overflow: hidden;">
+                    <div style="height: 100%; width: ${progress}%; background: var(--primary); border-radius: 5px;"></div>
+                </div>
+                <div style="text-align: center; margin-top: 8px; color: var(--text-muted);">
+                    ${book.pagesRead} / ${book.totalPages} pagine
+                </div>
+            </div>
+            ${book.completed ? `<div style="margin: 12px 0; padding: 10px; background: var(--success-light); border-radius: 8px; text-align: center;">✅ Libro completato! +${book.xpEarned || 0} XP</div>` : ''}
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="updateBookProgressModal('${bookId}')" style="flex: 1; padding: 12px; background: var(--success); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                📖 Aggiorna Pagine
+            </button>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button onclick="editBook('${bookId}')" style="flex: 1; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                ✏️ Modifica
+            </button>
+            <button onclick="confirmDeleteBook('${bookId}')" style="flex: 1; padding: 12px; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                🗑️ Elimina
+            </button>
+        </div>
+    `;
+
+    showModal('Dettaglio Libro', modalContent);
+}
+
+// Update book progress from modal
+function updateBookProgressModal(bookId) {
+    closeModal('dynamicModal');
+    updateBookProgress(bookId);
+}
+
+// Edit book
+function editBook(bookId) {
+    closeModal('dynamicModal');
+    const book = (state.books || []).find(b => b.id === bookId);
+    if (!book) return;
+
+    const modalContent = `
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Titolo *</label>
+                <input type="text" id="editBookTitle" value="${book.title || ''}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Autore</label>
+                <input type="text" id="editBookAuthor" value="${book.author || ''}"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Pagine totali</label>
+                <input type="number" id="editBookTotalPages" value="${book.totalPages || 0}" min="1"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Pagine lette</label>
+                <input type="number" id="editBookPagesRead" value="${book.pagesRead || 0}" min="0"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px;">
+            </div>
+            <button onclick="saveEditedBook('${bookId}')" style="width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 10px;">
+                💾 Salva Modifiche
+            </button>
+        </div>
+    `;
+
+    showModal('Modifica Libro', modalContent);
+}
+
+// Save edited book
+async function saveEditedBook(bookId) {
+    const book = (state.books || []).find(b => b.id === bookId);
+    if (!book) return;
+
+    const title = document.getElementById('editBookTitle').value.trim();
+    if (!title) {
+        showToast('Inserisci un titolo', 'error');
+        return;
+    }
+
+    book.title = title;
+    book.author = document.getElementById('editBookAuthor').value.trim();
+    book.totalPages = parseInt(document.getElementById('editBookTotalPages').value) || 1;
+    book.pagesRead = Math.min(parseInt(document.getElementById('editBookPagesRead').value) || 0, book.totalPages);
+
+    // Check if completed
+    if (book.pagesRead >= book.totalPages && !book.completed) {
+        book.completed = true;
+        book.completedAt = new Date().toISOString();
+    }
+
+    const sb = getSupabase();
+    if (sb && currentUser && book._supabaseId) {
+        await updateBookInDB(book._supabaseId, {
+            title: book.title,
+            author: book.author,
+            pages_total: book.totalPages,
+            pages_read: book.pagesRead,
+            status: book.completed ? 'completed' : 'reading'
+        });
+    } else {
+        saveStateAndSync('books');
+    }
+
+    closeModal('dynamicModal');
+    renderBooksPage();
+    showToast('Libro aggiornato!', 'success');
+}
+
+// Confirm delete book
+function confirmDeleteBook(bookId) {
+    closeModal('dynamicModal');
+    if (confirm('Sei sicuro di voler eliminare questo libro?')) {
+        deleteBook(bookId);
+    }
+}
+
+// Delete book
+async function deleteBook(bookId) {
+    const book = (state.books || []).find(b => b.id === bookId);
+    if (!book) return;
+
+    state.books = state.books.filter(b => b.id !== bookId);
+
+    const sb = getSupabase();
+    if (sb && currentUser && book._supabaseId) {
+        await deleteBookFromDB(book._supabaseId);
+    } else {
+        saveStateAndSync('books');
+    }
+
+    renderBooksPage();
+    showToast('Libro eliminato', 'success');
 }
 
 // ============================================
