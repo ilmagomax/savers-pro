@@ -4817,7 +4817,8 @@ async function ensureUserProfile() {
             loadBooksFromSupabase(),
             loadGoalsFromSupabase(),
             loadNotesFromSupabase(),
-            loadSaversLogsFromSupabase()
+            loadSaversLogsFromSupabase(),
+            loadMoneyGoalsFromSupabase()
         ]);
 
         console.log('✅ All data loaded from Supabase');
@@ -5443,6 +5444,99 @@ async function migrateLocalGoalsToSupabase() {
         if (dbGoal) { goal._supabaseId = dbGoal.id; goal.id = dbGoal.id; migrated++; }
     }
     if (migrated > 0) console.log(`✅ Migrated ${migrated} goals`);
+}
+
+// ============================================
+// MONEY GOALS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function loadMoneyGoalsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb.from('money_goals').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+        if (error) { console.error('Error loading money goals:', error); return []; }
+        return data.map(g => ({
+            id: g.id, name: g.name, icon: g.icon || '🏦',
+            target: parseFloat(g.target_amount) || 0,
+            current: parseFloat(g.current_amount) || 0,
+            deadline: g.deadline, isCompleted: g.is_completed,
+            completedAt: g.completed_at, createdAt: g.created_at,
+            _supabaseId: g.id
+        }));
+    } catch (err) { console.error('Error in loadMoneyGoalsFromDB:', err); return []; }
+}
+
+async function saveMoneyGoalToDB(goal) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('money_goals').insert({
+            user_id: currentUser.id, name: goal.name, icon: goal.icon || '🏦',
+            target_amount: goal.target, current_amount: goal.current || 0,
+            deadline: goal.deadline || null
+        }).select().single();
+        if (error) { console.error('Error saving money goal:', error); return null; }
+        return data;
+    } catch (err) { console.error('Error in saveMoneyGoalToDB:', err); return null; }
+}
+
+async function updateMoneyGoalInDB(goalId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const dbUpdates = { updated_at: new Date().toISOString() };
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
+        if (updates.target !== undefined) dbUpdates.target_amount = updates.target;
+        if (updates.current !== undefined) dbUpdates.current_amount = updates.current;
+        if (updates.deadline !== undefined) dbUpdates.deadline = updates.deadline;
+        if (updates.isCompleted !== undefined) {
+            dbUpdates.is_completed = updates.isCompleted;
+            if (updates.isCompleted) dbUpdates.completed_at = new Date().toISOString();
+        }
+        const { error } = await sb.from('money_goals').update(dbUpdates).eq('id', goalId).eq('user_id', currentUser.id);
+        if (error) { console.error('Error updating money goal:', error); return false; }
+        return true;
+    } catch (err) { console.error('Error in updateMoneyGoalInDB:', err); return false; }
+}
+
+async function deleteMoneyGoalFromDB(goalId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const { error } = await sb.from('money_goals').delete().eq('id', goalId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function loadMoneyGoalsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        console.log('📥 Loading money goals from Supabase...');
+        const dbGoals = await loadMoneyGoalsFromDB();
+        if (dbGoals && dbGoals.length > 0) {
+            state.moneyGoals = dbGoals;
+            console.log(`✅ Loaded ${dbGoals.length} money goals from Supabase`);
+            if (typeof renderMoneyGoals === 'function') renderMoneyGoals();
+        } else if (state.moneyGoals?.length > 0) {
+            console.log('🔄 Migrating local money goals...');
+            await migrateLocalMoneyGoalsToSupabase();
+        }
+    } catch (err) { console.error('Error loading money goals:', err); }
+}
+
+async function migrateLocalMoneyGoalsToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.moneyGoals) return;
+    let migrated = 0;
+    for (const goal of state.moneyGoals) {
+        if (goal._supabaseId || (goal.id?.length === 36 && goal.id?.includes('-'))) continue;
+        const dbGoal = await saveMoneyGoalToDB(goal);
+        if (dbGoal) { goal._supabaseId = dbGoal.id; goal.id = dbGoal.id; migrated++; }
+    }
+    if (migrated > 0) { console.log(`✅ Migrated ${migrated} money goals`); showToast(`${migrated} obiettivi migrati`, 'success'); }
 }
 
 // ============================================
@@ -16953,40 +17047,50 @@ function selectSkillIcon(icon) {
     }
 }
 
-function saveMoneyGoal() {
+async function saveMoneyGoal() {
     const name = document.getElementById('moneyGoalName').value.trim();
     const target = parseFloat(document.getElementById('moneyGoalTarget').value);
-    
+
     if (!name || !target) {
         showToast('Compila tutti i campi', 'error');
         return;
     }
-    
-    const goal = {
-        id: 'mg_' + Date.now(),
+
+    const goalData = {
         name: name,
         target: target,
         current: parseFloat(document.getElementById('moneyGoalCurrent').value) || 0,
-        deadline: document.getElementById('moneyGoalDeadline').value,
-        icon: selectedGoalIcon,
-        createdAt: new Date().toISOString()
+        deadline: document.getElementById('moneyGoalDeadline').value || null,
+        icon: selectedGoalIcon
     };
-    
-    state.moneyGoals.push(goal);
-    saveStateAndSync('moneyGoals', goal.id);
-
-    // Log per KPI
-    logAttivita('obiettivo_finanziario_creato', 'finanze', goal.id, {
-        nome: name,
-        target: target,
-        corrente: goal.current
-    });
 
     document.getElementById('moneyGoalName').value = '';
     document.getElementById('moneyGoalTarget').value = '';
     document.getElementById('moneyGoalCurrent').value = '0';
-
     closeModal('addMoneyGoalModal');
+
+    // Save to Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbGoal = await saveMoneyGoalToDB(goalData);
+        if (dbGoal) {
+            state.moneyGoals.push({ ...goalData, id: dbGoal.id, _supabaseId: dbGoal.id, createdAt: dbGoal.created_at });
+        } else {
+            state.moneyGoals.push({ ...goalData, id: 'mg_' + Date.now(), createdAt: new Date().toISOString() });
+            saveStateAndSync('moneyGoals');
+        }
+    } else {
+        state.moneyGoals.push({ ...goalData, id: 'mg_' + Date.now(), createdAt: new Date().toISOString() });
+        saveStateAndSync('moneyGoals');
+    }
+
+    // Log per KPI
+    logAttivita('obiettivo_finanziario_creato', 'finanze', null, {
+        nome: name,
+        target: target,
+        corrente: goalData.current
+    });
+
     renderFinancePage();
     addXP(10);
     showToast('Obiettivo creato! +10 XP', 'success');
