@@ -9642,6 +9642,33 @@ async function loadCalendarEvents(forceRange = null) {
 
         // Token might be expired o permessi insufficienti
         if (error.status === 401 || error.status === 403) {
+            console.log('🔄 Token scaduto, tento refresh...');
+
+            // Tenta refresh tramite Supabase
+            const refreshed = await refreshGoogleCalendarToken();
+
+            if (refreshed) {
+                console.log('✅ Token rinnovato, riprovo caricamento eventi...');
+                // Riprova una volta
+                try {
+                    const response = await gapi.client.calendar.events.list({
+                        calendarId: selectedCalendarId,
+                        timeMin: new Date().toISOString(),
+                        timeMax: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                        singleEvents: true,
+                        orderBy: 'startTime',
+                        maxResults: 100
+                    });
+                    state.calendarEvents = response.result.items || [];
+                    saveStateAndSync();
+                    console.log('✅ Eventi caricati dopo refresh token');
+                    return;
+                } catch (retryError) {
+                    console.error('❌ Errore anche dopo refresh:', retryError);
+                }
+            }
+
+            // Se il refresh fallisce, chiedi re-login
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('google_token_expiry');
             isGoogleSignedIn = false;
@@ -9650,6 +9677,40 @@ async function loadCalendarEvents(forceRange = null) {
         } else {
             showToast('Errore caricamento eventi', 'error');
         }
+    }
+}
+
+// Rinnova il token Google Calendar tramite Supabase
+async function refreshGoogleCalendarToken() {
+    const sb = getSupabase();
+    if (!sb) return false;
+
+    try {
+        // Forza refresh della sessione Supabase
+        const { data, error } = await sb.auth.refreshSession();
+
+        if (error) {
+            console.error('❌ Errore refresh sessione Supabase:', error);
+            return false;
+        }
+
+        if (data?.session?.provider_token) {
+            console.log('✅ Nuovo provider_token ottenuto da Supabase');
+            localStorage.setItem('google_access_token', data.session.provider_token);
+
+            // Imposta il token in GAPI
+            if (gapi?.client) {
+                gapi.client.setToken({ access_token: data.session.provider_token });
+            }
+
+            return true;
+        }
+
+        console.log('⚠️ Nessun provider_token nella sessione refreshata');
+        return false;
+    } catch (e) {
+        console.error('❌ Errore refresh token:', e);
+        return false;
     }
 }
 
@@ -28616,7 +28677,7 @@ function canSeeFinancialComment(comment) {
 }
 
 // Aggiungi commento a evento
-function addEventComment() {
+async function addEventComment() {
     if (!currentEventId) return;
 
     const input = document.getElementById('eventCommentInput');
@@ -28644,11 +28705,11 @@ function addEventComment() {
     initInbox();
 
     // Usa l'ID universale per i commenti (iCalUID per eventi condivisi)
-    const commentId = currentEventCommentId || currentEventId;
-    console.log('💬 Aggiunta commento con ID:', commentId, 'tipo:', currentEventCommentType);
+    const eventCommentId = currentEventCommentId || currentEventId;
+    console.log('💬 Aggiunta commento con ID:', eventCommentId, 'tipo:', currentEventCommentType);
 
-    if (!state.eventComments[commentId]) {
-        state.eventComments[commentId] = [];
+    if (!state.eventComments[eventCommentId]) {
+        state.eventComments[eventCommentId] = [];
     }
 
     const authorName = currentUser?.nickname || state.profile?.name || state.profile?.stageName || 'Tu';
@@ -28666,10 +28727,14 @@ function addEventComment() {
         amount: amount // null per commenti normali, numero per finanziari
     };
 
-    state.eventComments[commentId].push(comment);
+    // Salva su Supabase
+    const savedComment = await saveEventCommentToDB(comment, currentEventId, eventCommentId);
+    if (savedComment) {
+        comment.id = savedComment.id;
+        comment._supabaseId = savedComment.id;
+    }
 
-    // Salva commenti evento su Google Sheets usando l'ID universale
-    saveEventCommentsToCloud(commentId);
+    state.eventComments[eventCommentId].push(comment);
 
     // Cerca menzioni e invia notifiche
     const mentions = extractMentions(text);
@@ -28694,85 +28759,115 @@ function addEventComment() {
     if (amountInput) amountInput.value = '';
     setEventCommentType('normal'); // Torna al tipo normale
 
-    renderEventComments(commentId);
+    renderEventComments(eventCommentId);
 
     // Aggiorna riepilogo finanziario
-    renderEventFinanceSummaryFromComments(commentId);
+    renderEventFinanceSummaryFromComments(eventCommentId);
 
     showToast(toastMsg, 'success');
 }
 
-// Salva i commenti evento su Google Sheets
-async function saveEventCommentsToCloud(eventId) {
-    if (!isLoggedIn || !currentUser?.token) {
-        console.log('⚠️ saveEventCommentsToCloud: utente non loggato');
-        return;
+// ============================================
+// EVENT COMMENTS - Supabase CRUD
+// ============================================
+
+// Salva un singolo commento evento su Supabase
+async function saveEventCommentToDB(comment, eventId, eventCommentId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) {
+        console.log('⚠️ saveEventCommentToDB: Supabase non disponibile');
+        return null;
     }
 
     try {
-        const comments = state.eventComments[eventId] || [];
-        console.log('💾 Salvataggio commenti evento:', eventId, '- commenti:', comments.length);
-        const response = await apiCall('saveEventComments', {
-            eventId: eventId,
-            comments: comments
-        });
-        if (response.success) {
-            console.log('✅ Commenti evento salvati su cloud');
-        } else {
-            console.warn('⚠️ Salvataggio commenti fallito:', response.message);
+        const { data: profile } = await sb.auth.getUser();
+        if (!profile?.user?.id) {
+            console.log('⚠️ saveEventCommentToDB: utente non autenticato');
+            return null;
         }
+
+        const commentData = {
+            user_id: profile.user.id,
+            event_id: eventId,
+            event_comment_id: eventCommentId || eventId,
+            text: comment.text,
+            comment_type: comment.type || 'normal',
+            amount: comment.amount || null,
+            author_id: comment.authorId,
+            author_name: comment.authorName,
+            author_email: comment.authorEmail
+        };
+
+        const { data, error } = await sb
+            .from('event_comments')
+            .insert(commentData)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('❌ Errore salvataggio commento evento:', error);
+            return null;
+        }
+
+        console.log('✅ Commento evento salvato su Supabase:', data.id);
+        return data;
     } catch (error) {
-        console.error('❌ Errore salvataggio commenti evento:', error);
+        console.error('❌ Errore saveEventCommentToDB:', error);
+        return null;
     }
 }
 
-// Carica i commenti evento da Google Sheets
-async function loadEventCommentsFromCloud(eventId) {
-    // Verifica che l'utente sia loggato
-    if (!isLoggedIn || !currentUser?.token) {
-        console.log('⚠️ loadEventCommentsFromCloud: utente non loggato');
+// Carica commenti evento da Supabase
+async function loadEventCommentsFromCloud(eventCommentId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) {
+        console.log('⚠️ loadEventCommentsFromCloud: Supabase non disponibile');
         return;
     }
 
     try {
-        console.log('📬 Caricamento commenti per evento:', eventId);
-        const response = await apiCall('loadEventComments', {
-            eventId: eventId
-        });
+        console.log('📬 Caricamento commenti per evento:', eventCommentId);
 
-        console.log('📬 Risposta loadEventComments:', response);
+        const { data, error } = await sb
+            .from('event_comments')
+            .select('*')
+            .eq('event_comment_id', eventCommentId)
+            .order('created_at', { ascending: true });
 
-        if (response.success) {
-            // Inizializza se necessario
-            initInbox();
-
-            const cloudComments = response.comments || [];
-            const localComments = state.eventComments[eventId] || [];
-
-            console.log(`📬 Commenti cloud: ${cloudComments.length}, locali: ${localComments.length}`);
-
-            // Se ci sono commenti nel cloud, usali come base
-            if (cloudComments.length > 0) {
-                // Trova commenti locali che non sono nel cloud (appena aggiunti)
-                const cloudIds = new Set(cloudComments.map(c => c.id));
-                const newLocalComments = localComments.filter(c => !cloudIds.has(c.id));
-
-                // Combina: cloud + nuovi locali
-                state.eventComments[eventId] = [...cloudComments, ...newLocalComments];
-                console.log(`✅ Commenti evento caricati: ${cloudComments.length} dal cloud, ${newLocalComments.length} locali`);
-            } else {
-                // Nessun commento nel cloud - mantieni quelli locali se esistono
-                if (localComments.length === 0) {
-                    state.eventComments[eventId] = [];
-                }
-                console.log('📬 Nessun commento nel cloud, mantenuti locali:', localComments.length);
-            }
-        } else {
-            console.warn('⚠️ loadEventComments fallito:', response.message);
+        if (error) {
+            console.error('❌ Errore caricamento commenti evento:', error);
+            return;
         }
+
+        // Inizializza se necessario
+        initInbox();
+
+        // Converti dal formato DB al formato app
+        const comments = (data || []).map(c => ({
+            id: c.id,
+            text: c.text,
+            type: c.comment_type || 'normal',
+            amount: c.amount,
+            authorId: c.author_id,
+            authorName: c.author_name,
+            authorEmail: c.author_email,
+            createdAt: c.created_at,
+            _supabaseId: c.id
+        }));
+
+        state.eventComments[eventCommentId] = comments;
+        console.log(`✅ Caricati ${comments.length} commenti evento da Supabase`);
+
     } catch (error) {
-        console.error('❌ Errore caricamento commenti evento:', error);
+        console.error('❌ Errore loadEventCommentsFromCloud:', error);
     }
+}
+
+// Wrapper per compatibilità - salva il commento appena aggiunto
+async function saveEventCommentsToCloud(eventId) {
+    // Con Supabase, salviamo i singoli commenti direttamente in addEventComment
+    // Questa funzione è mantenuta per compatibilità ma non fa nulla di speciale
+    console.log('📬 saveEventCommentsToCloud chiamato per:', eventId);
 }
 
 // Invia notifiche per menzioni negli eventi
