@@ -3943,24 +3943,67 @@
                     <div id="eventCommentsList"></div>
                     <div class="comment-input-wrapper" id="eventCommentInputWrapper">
                         <!-- Selettore tipo commento -->
-                        <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
                             <button type="button" class="btn btn-sm comment-type-btn active" id="commentTypeNormal" onclick="setEventCommentType('normal')">💬 Note</button>
-                            <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeIncome" onclick="setEventCommentType('income')">💵 Incasso</button>
+                            <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeIncome" onclick="setEventCommentType('income')">💵 Registra Incasso</button>
                             <button type="button" class="btn btn-sm comment-type-btn" id="commentTypeExpense" onclick="setEventCommentType('expense')">💸 Spesa</button>
                         </div>
-                        <!-- Campi importo e note (visibili solo per tipo finanziario) -->
-                        <div id="eventCommentAmountWrapper" style="display:none; margin-bottom:8px;">
-                            <div style="display:flex; gap:8px; margin-bottom:6px;">
-                                <input type="number" step="0.01" min="0" class="form-input" id="eventCommentAmount" placeholder="Importo €" style="font-size:0.9rem; flex:1;">
+
+                        <!-- Form Incasso Evento (nuovo sistema con Incasso/Guadagno/Spese) -->
+                        <div id="eventIncomeFormWrapper" style="display:none; margin-bottom:8px; background:var(--bg-tertiary); padding:12px; border-radius:8px;">
+                            <div style="font-size:0.8rem; font-weight:600; margin-bottom:10px; color:var(--success);">💵 Registra Incasso Evento</div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                                <div>
+                                    <label style="font-size:0.7rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Incasso Totale €</label>
+                                    <input type="number" step="0.01" min="0" class="form-input" id="eventIncomeTotal" placeholder="100.00" style="font-size:0.9rem;" oninput="calculateAgencyFee()">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.7rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Tuo Guadagno €</label>
+                                    <input type="number" step="0.01" min="0" class="form-input" id="eventIncomeProfit" placeholder="30.00" style="font-size:0.9rem;" oninput="calculateAgencyFee()">
+                                </div>
                             </div>
-                            <input type="text" class="form-input" id="eventCommentNotes" placeholder="Note (opzionale)" style="font-size:0.85rem;">
+                            <div style="margin-bottom:8px;">
+                                <label style="font-size:0.7rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Spese Sostenute € (opzionale)</label>
+                                <input type="number" step="0.01" min="0" class="form-input" id="eventIncomeExpenses" placeholder="0.00" style="font-size:0.9rem;" oninput="calculateAgencyFee()">
+                            </div>
+                            <!-- Riepilogo calcolato -->
+                            <div id="eventIncomeCalc" style="background:var(--bg-secondary); padding:8px; border-radius:6px; font-size:0.8rem; display:none;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                                    <span>Compensi Agenzia:</span>
+                                    <span id="agencyFeeAmount" style="font-weight:600; color:var(--primary);">€0.00</span>
+                                </div>
+                                <div style="font-size:0.7rem; color:var(--text-secondary);">= Incasso - Guadagno - Spese</div>
+                            </div>
+                            <input type="text" class="form-input" id="eventIncomeNotes" placeholder="Note (opzionale)" style="font-size:0.85rem; margin-top:8px;">
                         </div>
+
+                        <!-- Form Spesa semplice -->
+                        <div id="eventExpenseFormWrapper" style="display:none; margin-bottom:8px;">
+                            <div style="display:flex; gap:8px; margin-bottom:6px;">
+                                <input type="number" step="0.01" min="0" class="form-input" id="eventExpenseAmount" placeholder="Importo Spesa €" style="font-size:0.9rem; flex:1;">
+                            </div>
+                            <input type="text" class="form-input" id="eventExpenseNotes" placeholder="Descrizione spesa" style="font-size:0.85rem;">
+                        </div>
+
                         <div style="display:flex; gap:8px;">
                             <input type="text" class="comment-input" id="eventCommentInput" placeholder="Scrivi... @ per menzionare" oninput="checkEventMentionAutocomplete(this)" onkeydown="handleEventMentionKeydown(event)" onfocus="scrollInputIntoView(this)" style="flex:1;">
                             <button class="btn btn-primary btn-sm comment-send-btn" onclick="addEventComment()">Invia</button>
                         </div>
                         <!-- Dropdown autocomplete menzioni eventi -->
                         <div id="eventMentionAutocomplete" class="mention-autocomplete"></div>
+                    </div>
+
+                    <!-- Bottone Consegna Compensi (visibile solo se ci sono compensi da consegnare) -->
+                    <div id="eventDeliveryWrapper" style="display:none; margin-top:12px; padding:12px; background:linear-gradient(135deg, #f59e0b20, #d9770620); border-radius:8px; border:1px solid #f59e0b40;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-size:0.8rem; font-weight:600; color:#f59e0b;">💰 Compensi da Consegnare</div>
+                                <div id="pendingAgencyFee" style="font-size:1.2rem; font-weight:700;">€0.00</div>
+                            </div>
+                            <button class="btn btn-warning btn-sm" onclick="initiateAgencyDelivery()" style="white-space:nowrap;">
+                                📤 Consegna
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -28653,7 +28696,7 @@ function renderEventComments(eventId) {
         // Commenti normali: visibili a tutti i partecipanti
         if (!comment.type || comment.type === 'normal') return true;
 
-        // Commenti finanziari: visibili solo a proprietario e menzionati
+        // Commenti finanziari e consegne: visibili solo a proprietario e menzionati
         return canSeeFinancialComment(comment);
     });
 
@@ -28661,6 +28704,18 @@ function renderEventComments(eventId) {
         container.innerHTML = '<div class="text-muted" style="font-size:0.85rem;padding:8px 0;">Nessun commento ancora. Sii il primo!</div>';
         return;
     }
+
+    // Verifica se sono il proprietario (per mostrare pulsante conferma)
+    const myEmail = state.profile?.email?.toLowerCase();
+    const event = isCurrentEventGoogle ?
+        state.calendarEvents?.find(e => e.id === currentEventId) :
+        state.events?.find(e => e.id === currentEventId);
+    const isOwner = event && (
+        event.organizer?.self === true ||
+        event.organizer?.email?.toLowerCase() === myEmail ||
+        event.creator?.email?.toLowerCase() === myEmail ||
+        !isCurrentEventGoogle // Eventi locali: sempre proprietario
+    );
 
     container.innerHTML = comments.map(comment => {
         const timeAgo = getTimeAgo(new Date(comment.createdAt));
@@ -28673,21 +28728,78 @@ function renderEventComments(eventId) {
         const isFinancial = comment.type && comment.type !== 'normal';
         const isIncome = comment.type === 'income';
         const isExpense = comment.type === 'expense';
+        const isDelivery = comment.type === 'delivery';
 
         // Classe CSS per il tipo di commento
-        const itemClass = isFinancial ?
-            `comment-item financial ${isIncome ? 'income' : 'expense'}` :
-            'comment-item';
-
-        // Mostra importo per commenti finanziari
-        const amountHtml = isFinancial && comment.amount ?
-            `<span class="comment-amount ${isIncome ? 'income' : 'expense'}">${isIncome ? '+' : ''}€${Math.abs(comment.amount).toFixed(2)}</span>` :
-            '';
+        let itemClass = 'comment-item';
+        if (isFinancial) itemClass += ' financial';
+        if (isIncome) itemClass += ' income';
+        if (isExpense) itemClass += ' expense';
+        if (isDelivery) itemClass += ' delivery';
 
         // Badge tipo per commenti finanziari
-        const typeBadge = isFinancial ?
-            `<span class="financial-badge">${isIncome ? '💵 Incasso' : '💸 Spesa'}</span>` :
-            '';
+        let typeBadge = '';
+        if (isIncome) typeBadge = '<span class="financial-badge">💵 Incasso</span>';
+        else if (isExpense) typeBadge = '<span class="financial-badge">💸 Spesa</span>';
+        else if (isDelivery) typeBadge = '<span class="financial-badge" style="background:#f59e0b20;color:#f59e0b;">📤 Consegna</span>';
+
+        // Contenuto per commenti income con nuovo sistema
+        let detailHtml = '';
+        if (isIncome && comment.incomeTotal) {
+            const statusBadge = comment.agencyFeeDelivered ?
+                (comment.agencyFeeConfirmed ?
+                    '<span style="color:#10b981; font-size:0.7rem;">✅ Confermato</span>' :
+                    '<span style="color:#f59e0b; font-size:0.7rem;">⏳ In attesa conferma</span>') :
+                '<span style="color:#6366f1; font-size:0.7rem;">📋 Da consegnare</span>';
+
+            detailHtml = `
+                <div style="background:var(--bg-tertiary); padding:8px; border-radius:6px; margin-top:6px; font-size:0.8rem;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span>Incasso Totale:</span>
+                        <span style="font-weight:600;">€${comment.incomeTotal.toFixed(2)}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span>Tuo Guadagno:</span>
+                        <span style="font-weight:600; color:#10b981;">€${(comment.animatorProfit || 0).toFixed(2)}</span>
+                    </div>
+                    ${comment.animatorExpenses > 0 ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                            <span>Spese:</span>
+                            <span style="color:#ef4444;">-€${comment.animatorExpenses.toFixed(2)}</span>
+                        </div>
+                    ` : ''}
+                    <div style="display:flex; justify-content:space-between; padding-top:4px; border-top:1px solid var(--border-color);">
+                        <span>Compensi Agenzia:</span>
+                        <span style="font-weight:600; color:var(--warning);">€${(comment.agencyFee || 0).toFixed(2)}</span>
+                    </div>
+                    <div style="margin-top:6px; text-align:right;">${statusBadge}</div>
+                </div>
+            `;
+        } else if (isFinancial && comment.amount) {
+            // Vecchio formato o spesa semplice
+            detailHtml = `<span class="comment-amount ${isIncome ? 'income' : 'expense'}">${isIncome ? '+' : ''}€${Math.abs(comment.amount).toFixed(2)}</span>`;
+        }
+
+        // Pulsante conferma per proprietario su consegne pending
+        let confirmBtn = '';
+        if (isDelivery && comment.deliveryStatus === 'pending' && isOwner) {
+            confirmBtn = `
+                <div style="margin-top:8px; display:flex; gap:8px;">
+                    <button class="btn btn-sm btn-success" onclick="confirmDeliveryReceipt('${comment.id}')">✅ Conferma</button>
+                    <button class="btn btn-sm btn-danger" onclick="rejectDeliveryReceipt('${comment.id}')">❌ Rifiuta</button>
+                </div>
+            `;
+        }
+
+        // Status per consegne
+        let deliveryStatus = '';
+        if (isDelivery) {
+            if (comment.deliveryStatus === 'confirmed') {
+                deliveryStatus = `<div style="margin-top:6px; color:#10b981; font-size:0.75rem;">✅ Confermato</div>`;
+            } else if (comment.deliveryStatus === 'rejected') {
+                deliveryStatus = `<div style="margin-top:6px; color:#ef4444; font-size:0.75rem;">❌ Rifiutato</div>`;
+            }
+        }
 
         return `
             <div class="${itemClass}">
@@ -28697,11 +28809,124 @@ function renderEventComments(eventId) {
                         <span class="comment-author">${comment.authorName || 'Anonimo'}${typeBadge}</span>
                         <span class="comment-time">${timeAgo}</span>
                     </div>
-                    <div class="comment-text">${amountHtml}${text}</div>
+                    <div class="comment-text">${text}</div>
+                    ${detailHtml}
+                    ${deliveryStatus}
+                    ${confirmBtn}
                 </div>
             </div>
         `;
     }).join('');
+}
+
+// Conferma ricezione compensi (per proprietario)
+async function confirmDeliveryReceipt(commentId) {
+    const eventCommentId = currentEventCommentId || currentEventId;
+    const comments = state.eventComments?.[eventCommentId] || [];
+    const comment = comments.find(c => c.id === commentId);
+
+    if (!comment) return;
+
+    const myEmail = state.profile?.email;
+    const now = new Date().toISOString();
+
+    // Aggiorna stato locale
+    comment.deliveryStatus = 'confirmed';
+    comment.deliveryConfirmedAt = now;
+    comment.deliveryConfirmedBy = myEmail;
+
+    // Aggiorna su Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        try {
+            await sb
+                .from('event_comments')
+                .update({
+                    delivery_status: 'confirmed',
+                    agency_fee_confirmed: true,
+                    agency_fee_confirmed_at: now,
+                    agency_fee_confirmed_by: myEmail
+                })
+                .eq('id', commentId);
+        } catch (err) {
+            console.error('Errore conferma consegna:', err);
+        }
+    }
+
+    // Aggiorna anche i commenti income correlati
+    for (const c of comments) {
+        if (c.type === 'income' && c.agencyFeeDelivered && !c.agencyFeeConfirmed) {
+            c.agencyFeeConfirmed = true;
+            c.agencyFeeConfirmedAt = now;
+            c.agencyFeeConfirmedBy = myEmail;
+
+            if (c.id && sb) {
+                await sb
+                    .from('event_comments')
+                    .update({
+                        agency_fee_confirmed: true,
+                        agency_fee_confirmed_at: now,
+                        agency_fee_confirmed_by: myEmail
+                    })
+                    .eq('id', c.id);
+            }
+        }
+    }
+
+    saveStateAndSync();
+    renderEventComments(eventCommentId);
+    showToast('Ricezione compensi confermata!', 'success');
+}
+
+// Rifiuta consegna compensi (per proprietario)
+async function rejectDeliveryReceipt(commentId) {
+    const eventCommentId = currentEventCommentId || currentEventId;
+    const comments = state.eventComments?.[eventCommentId] || [];
+    const comment = comments.find(c => c.id === commentId);
+
+    if (!comment) return;
+
+    // Aggiorna stato locale
+    comment.deliveryStatus = 'rejected';
+
+    // Annulla lo stato di consegna sui commenti income
+    for (const c of comments) {
+        if (c.type === 'income' && c.agencyFeeDelivered && !c.agencyFeeConfirmed) {
+            c.agencyFeeDelivered = false;
+            c.agencyFeeDeliveredAt = null;
+        }
+    }
+
+    // Aggiorna su Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        try {
+            await sb
+                .from('event_comments')
+                .update({ delivery_status: 'rejected' })
+                .eq('id', commentId);
+
+            // Reset stato consegna sugli income
+            for (const c of comments) {
+                if (c.type === 'income' && c.id) {
+                    await sb
+                        .from('event_comments')
+                        .update({
+                            agency_fee_delivered: false,
+                            agency_fee_delivered_at: null
+                        })
+                        .eq('id', c.id);
+                }
+            }
+        } catch (err) {
+            console.error('Errore rifiuto consegna:', err);
+        }
+    }
+
+    saveStateAndSync();
+    renderEventComments(eventCommentId);
+    updateAgencyDeliveryButton(eventCommentId);
+    showToast('Consegna rifiutata. L\'animatore dovrà riprovare.', 'warning');
 }
 
 // ============================================
@@ -28952,19 +29177,54 @@ function setEventCommentType(type) {
         if (type === 'expense') activeBtn.classList.add('expense');
     }
 
-    // Mostra/nascondi campo importo
-    const amountWrapper = document.getElementById('eventCommentAmountWrapper');
-    const amountInput = document.getElementById('eventCommentAmount');
+    // Mostra/nascondi form appropriato
+    const incomeFormWrapper = document.getElementById('eventIncomeFormWrapper');
+    const expenseFormWrapper = document.getElementById('eventExpenseFormWrapper');
     const textInput = document.getElementById('eventCommentInput');
 
+    // Nascondi tutti i form
+    if (incomeFormWrapper) incomeFormWrapper.style.display = 'none';
+    if (expenseFormWrapper) expenseFormWrapper.style.display = 'none';
+
     if (type === 'normal') {
-        amountWrapper.style.display = 'none';
         textInput.placeholder = 'Scrivi... @ per menzionare';
-    } else {
-        amountWrapper.style.display = 'block';
-        textInput.placeholder = type === 'income' ? 'Descrizione incasso... @ per menzionare' : 'Descrizione spesa... @ per menzionare';
-        amountInput.focus();
+    } else if (type === 'income') {
+        if (incomeFormWrapper) incomeFormWrapper.style.display = 'block';
+        textInput.placeholder = 'Note aggiuntive... @ per menzionare';
+        document.getElementById('eventIncomeTotal')?.focus();
+    } else if (type === 'expense') {
+        if (expenseFormWrapper) expenseFormWrapper.style.display = 'block';
+        textInput.placeholder = 'Note aggiuntive... @ per menzionare';
+        document.getElementById('eventExpenseAmount')?.focus();
     }
+}
+
+// Calcola compensi agenzia in tempo reale
+function calculateAgencyFee() {
+    const totalEl = document.getElementById('eventIncomeTotal');
+    const profitEl = document.getElementById('eventIncomeProfit');
+    const expensesEl = document.getElementById('eventIncomeExpenses');
+    const calcEl = document.getElementById('eventIncomeCalc');
+    const feeEl = document.getElementById('agencyFeeAmount');
+
+    const total = parseFloat(totalEl?.value) || 0;
+    const profit = parseFloat(profitEl?.value) || 0;
+    const expenses = parseFloat(expensesEl?.value) || 0;
+
+    // Compensi Agenzia = Incasso - Guadagno Animatore - Spese
+    const agencyFee = total - profit - expenses;
+
+    if (calcEl && feeEl) {
+        if (total > 0) {
+            calcEl.style.display = 'block';
+            feeEl.textContent = `€${agencyFee.toFixed(2)}`;
+            feeEl.style.color = agencyFee >= 0 ? 'var(--primary)' : '#ef4444';
+        } else {
+            calcEl.style.display = 'none';
+        }
+    }
+
+    return agencyFee;
 }
 
 // Verifica se l'utente può commentare questo evento
@@ -29065,26 +29325,8 @@ async function addEventComment() {
     const input = document.getElementById('eventCommentInput');
     const text = input.value.trim();
 
-    // Verifica che ci sia testo
+    // Verifica che ci sia testo per commenti normali
     if (!text && currentEventCommentType === 'normal') return;
-
-    // Per commenti finanziari, verifica importo
-    const amountInput = document.getElementById('eventCommentAmount');
-    const notesInput = document.getElementById('eventCommentNotes');
-    let amount = null;
-    let notes = notesInput?.value?.trim() || '';
-
-    if (currentEventCommentType !== 'normal') {
-        amount = parseFloat(amountInput?.value || 0);
-        if (!amount || amount <= 0) {
-            showToast('Inserisci un importo valido', 'error');
-            return;
-        }
-        // Converti in negativo se spesa
-        if (currentEventCommentType === 'expense') {
-            amount = -Math.abs(amount);
-        }
-    }
 
     initInbox();
 
@@ -29099,24 +29341,104 @@ async function addEventComment() {
     const authorName = currentUser?.nickname || state.profile?.name || state.profile?.stageName || 'Tu';
     const authorEmail = state.profile?.email || state.cloudUser?.email || null;
 
-    // Costruisci il testo del commento includendo le note se presenti
-    let commentText = text || (currentEventCommentType === 'income' ? 'Incasso' : 'Spesa');
-    if (notes && currentEventCommentType !== 'normal') {
-        commentText = notes; // Usa le note come testo principale per commenti finanziari
-    }
+    let comment = null;
+    let toastMsg = '';
 
-    const comment = {
-        id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        text: commentText,
-        notes: notes, // Campo separato per le note
-        authorId: state.profile?.googleId || currentUser?.username || 'local',
-        authorName: authorName,
-        authorEmail: authorEmail,
-        createdAt: new Date().toISOString(),
-        // Campi finanziari
-        type: currentEventCommentType, // 'normal', 'income', 'expense'
-        amount: amount // null per commenti normali, numero per finanziari
-    };
+    if (currentEventCommentType === 'income') {
+        // NUOVO SISTEMA: Incasso con Guadagno e Compensi Agenzia
+        const incomeTotal = parseFloat(document.getElementById('eventIncomeTotal')?.value) || 0;
+        const incomeProfit = parseFloat(document.getElementById('eventIncomeProfit')?.value) || 0;
+        const incomeExpenses = parseFloat(document.getElementById('eventIncomeExpenses')?.value) || 0;
+        const incomeNotes = document.getElementById('eventIncomeNotes')?.value?.trim() || '';
+
+        if (incomeTotal <= 0) {
+            showToast('Inserisci l\'incasso totale', 'error');
+            return;
+        }
+
+        if (incomeProfit < 0 || incomeProfit > incomeTotal) {
+            showToast('Il guadagno deve essere tra 0 e l\'incasso totale', 'error');
+            return;
+        }
+
+        // Calcola compensi agenzia
+        const agencyFee = incomeTotal - incomeProfit - incomeExpenses;
+
+        comment = {
+            id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            text: incomeNotes || `Incasso evento: €${incomeTotal.toFixed(2)}`,
+            notes: incomeNotes,
+            authorId: state.profile?.googleId || currentUser?.username || 'local',
+            authorName: authorName,
+            authorEmail: authorEmail,
+            createdAt: new Date().toISOString(),
+            type: 'income',
+            // Nuovo schema finanziario
+            incomeTotal: incomeTotal,        // Incasso totale ricevuto
+            animatorProfit: incomeProfit,    // Guadagno animatore
+            animatorExpenses: incomeExpenses, // Spese sostenute
+            agencyFee: agencyFee,            // Compensi agenzia (da consegnare)
+            agencyFeeDelivered: false,       // Non ancora consegnato
+            agencyFeeDeliveredAt: null,      // Data consegna
+            agencyFeeConfirmed: false,       // Non ancora confermato dal proprietario
+            agencyFeeConfirmedAt: null,      // Data conferma
+            agencyFeeConfirmedBy: null,      // Chi ha confermato
+            // Per retrocompatibilità
+            amount: incomeTotal
+        };
+
+        toastMsg = `Incasso registrato: €${incomeTotal.toFixed(2)} (Guadagno: €${incomeProfit.toFixed(2)}, Agenzia: €${agencyFee.toFixed(2)})`;
+
+        // Reset form incasso
+        document.getElementById('eventIncomeTotal').value = '';
+        document.getElementById('eventIncomeProfit').value = '';
+        document.getElementById('eventIncomeExpenses').value = '';
+        document.getElementById('eventIncomeNotes').value = '';
+        document.getElementById('eventIncomeCalc').style.display = 'none';
+
+    } else if (currentEventCommentType === 'expense') {
+        // Spesa semplice
+        const expenseAmount = parseFloat(document.getElementById('eventExpenseAmount')?.value) || 0;
+        const expenseNotes = document.getElementById('eventExpenseNotes')?.value?.trim() || '';
+
+        if (expenseAmount <= 0) {
+            showToast('Inserisci l\'importo della spesa', 'error');
+            return;
+        }
+
+        comment = {
+            id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            text: expenseNotes || 'Spesa',
+            notes: expenseNotes,
+            authorId: state.profile?.googleId || currentUser?.username || 'local',
+            authorName: authorName,
+            authorEmail: authorEmail,
+            createdAt: new Date().toISOString(),
+            type: 'expense',
+            amount: -Math.abs(expenseAmount)
+        };
+
+        toastMsg = `Spesa registrata: €${expenseAmount.toFixed(2)}`;
+
+        // Reset form spesa
+        document.getElementById('eventExpenseAmount').value = '';
+        document.getElementById('eventExpenseNotes').value = '';
+
+    } else {
+        // Commento normale
+        comment = {
+            id: 'comment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            text: text,
+            authorId: state.profile?.googleId || currentUser?.username || 'local',
+            authorName: authorName,
+            authorEmail: authorEmail,
+            createdAt: new Date().toISOString(),
+            type: 'normal',
+            amount: null
+        };
+
+        toastMsg = 'Commento aggiunto!';
+    }
 
     // Salva su Supabase
     const savedComment = await saveEventCommentToDB(comment, currentEventId, eventCommentId);
@@ -29130,33 +29452,187 @@ async function addEventComment() {
     // Cerca menzioni e invia notifiche
     const mentions = extractMentions(text);
     if (mentions.length > 0) {
-        // Trova info evento
         const event = isCurrentEventGoogle ?
             state.calendarEvents?.find(e => e.id === currentEventId) :
             state.events?.find(e => e.id === currentEventId);
-
         sendEventMentionNotifications(mentions, event, currentEventId, text, authorName);
     }
 
     saveStateAndSync();
 
-    // Messaggio conferma appropriato (PRIMA del reset)
-    const commentTypeForToast = currentEventCommentType;
-    const toastMsg = commentTypeForToast === 'normal' ? 'Commento aggiunto!' :
-                     (amount > 0 ? `Incasso di €${amount.toFixed(2)} registrato!` : `Spesa di €${Math.abs(amount).toFixed(2)} registrata!`);
-
     // Reset form
     input.value = '';
-    if (amountInput) amountInput.value = '';
-    if (notesInput) notesInput.value = '';
-    setEventCommentType('normal'); // Torna al tipo normale
+    setEventCommentType('normal');
 
     renderEventComments(eventCommentId);
-
-    // Aggiorna riepilogo finanziario
     renderEventFinanceSummaryFromComments(eventCommentId);
+    updateAgencyDeliveryButton(eventCommentId);
 
     showToast(toastMsg, 'success');
+}
+
+// Aggiorna il pulsante di consegna compensi
+function updateAgencyDeliveryButton(eventCommentId) {
+    const wrapper = document.getElementById('eventDeliveryWrapper');
+    const feeEl = document.getElementById('pendingAgencyFee');
+    if (!wrapper || !feeEl) return;
+
+    const comments = state.eventComments?.[eventCommentId] || [];
+
+    // Calcola compensi totali non consegnati
+    let pendingFee = 0;
+    comments.forEach(c => {
+        if (c.type === 'income' && c.agencyFee > 0 && !c.agencyFeeDelivered) {
+            pendingFee += c.agencyFee;
+        }
+    });
+
+    if (pendingFee > 0) {
+        wrapper.style.display = 'block';
+        feeEl.textContent = `€${pendingFee.toFixed(2)}`;
+    } else {
+        wrapper.style.display = 'none';
+    }
+}
+
+// Inizia processo di consegna compensi
+function initiateAgencyDelivery() {
+    const eventCommentId = currentEventCommentId || currentEventId;
+    const comments = state.eventComments?.[eventCommentId] || [];
+
+    // Calcola totale da consegnare
+    let pendingFee = 0;
+    const pendingIncomes = [];
+    comments.forEach(c => {
+        if (c.type === 'income' && c.agencyFee > 0 && !c.agencyFeeDelivered) {
+            pendingFee += c.agencyFee;
+            pendingIncomes.push(c);
+        }
+    });
+
+    if (pendingFee <= 0) {
+        showToast('Nessun compenso da consegnare', 'info');
+        return;
+    }
+
+    // Trova info evento per il proprietario
+    const event = isCurrentEventGoogle ?
+        state.calendarEvents?.find(e => e.id === currentEventId) :
+        state.events?.find(e => e.id === currentEventId);
+
+    const ownerEmail = event?.organizer?.email || event?.creator?.email || 'il proprietario';
+
+    const content = `
+        <div style="text-align:center; margin-bottom:20px;">
+            <div style="font-size:3rem; margin-bottom:10px;">💰</div>
+            <div style="font-size:1.5rem; font-weight:700; color:var(--warning);">€${pendingFee.toFixed(2)}</div>
+            <div style="color:var(--text-secondary); margin-top:8px;">Compensi da consegnare all'agenzia</div>
+        </div>
+        <div style="background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-bottom:16px; font-size:0.85rem;">
+            <div style="margin-bottom:8px;"><strong>📋 Dettaglio:</strong></div>
+            ${pendingIncomes.map(c => `
+                <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border-color);">
+                    <span>${c.text || 'Incasso'}</span>
+                    <span style="color:var(--warning);">€${c.agencyFee.toFixed(2)}</span>
+                </div>
+            `).join('')}
+        </div>
+        <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:16px;">
+            Confermando, segnerai questi compensi come consegnati.<br>
+            Il proprietario (${ownerEmail}) riceverà una notifica per confermare la ricezione.
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary" onclick="closeModal('dynamicModal')" style="flex:1;">Annulla</button>
+            <button class="btn btn-warning" onclick="confirmAgencyDelivery()" style="flex:1;">📤 Conferma Consegna</button>
+        </div>
+    `;
+
+    showModal('📤 Consegna Compensi Agenzia', content);
+}
+
+// Conferma consegna compensi
+async function confirmAgencyDelivery() {
+    const eventCommentId = currentEventCommentId || currentEventId;
+    const comments = state.eventComments?.[eventCommentId] || [];
+    const now = new Date().toISOString();
+
+    // Segna tutti i compensi come consegnati
+    let totalDelivered = 0;
+    for (const c of comments) {
+        if (c.type === 'income' && c.agencyFee > 0 && !c.agencyFeeDelivered) {
+            c.agencyFeeDelivered = true;
+            c.agencyFeeDeliveredAt = now;
+            totalDelivered += c.agencyFee;
+
+            // Aggiorna su Supabase se ha ID
+            if (c.id || c._supabaseId) {
+                await updateEventCommentDeliveryStatus(c.id || c._supabaseId, true, now);
+            }
+        }
+    }
+
+    // Crea un commento di log per la consegna
+    const authorName = currentUser?.nickname || state.profile?.name || state.profile?.stageName || 'Tu';
+    const authorEmail = state.profile?.email || null;
+
+    const deliveryLog = {
+        id: 'delivery_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        text: `📤 Consegna compensi: €${totalDelivered.toFixed(2)} - In attesa di conferma proprietario`,
+        authorId: state.profile?.googleId || currentUser?.username || 'local',
+        authorName: authorName,
+        authorEmail: authorEmail,
+        createdAt: now,
+        type: 'delivery',
+        amount: totalDelivered,
+        deliveryStatus: 'pending', // 'pending', 'confirmed', 'rejected'
+        deliveryConfirmedAt: null,
+        deliveryConfirmedBy: null
+    };
+
+    // Salva log consegna
+    await saveEventCommentToDB(deliveryLog, currentEventId, eventCommentId);
+    state.eventComments[eventCommentId].push(deliveryLog);
+
+    // Notifica al proprietario
+    const event = isCurrentEventGoogle ?
+        state.calendarEvents?.find(e => e.id === currentEventId) :
+        state.events?.find(e => e.id === currentEventId);
+
+    if (event) {
+        const ownerEmail = event.organizer?.email || event.creator?.email;
+        if (ownerEmail && ownerEmail !== authorEmail) {
+            // Invia notifica (se disponibile sistema notifiche)
+            console.log('📬 Notifica consegna a:', ownerEmail);
+            // TODO: Implementare notifica push/email
+        }
+    }
+
+    saveStateAndSync();
+    closeModal('dynamicModal');
+
+    renderEventComments(eventCommentId);
+    renderEventFinanceSummaryFromComments(eventCommentId);
+    updateAgencyDeliveryButton(eventCommentId);
+
+    showToast(`Consegna di €${totalDelivered.toFixed(2)} registrata! In attesa di conferma.`, 'success');
+}
+
+// Aggiorna stato consegna su Supabase
+async function updateEventCommentDeliveryStatus(commentId, delivered, deliveredAt) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+
+    try {
+        await sb
+            .from('event_comments')
+            .update({
+                agency_fee_delivered: delivered,
+                agency_fee_delivered_at: deliveredAt
+            })
+            .eq('id', commentId);
+    } catch (err) {
+        console.error('Errore aggiornamento stato consegna:', err);
+    }
 }
 
 // ============================================
@@ -29187,7 +29663,18 @@ async function saveEventCommentToDB(comment, eventId, eventCommentId) {
             amount: comment.amount || null,
             author_id: comment.authorId,
             author_name: comment.authorName,
-            author_email: comment.authorEmail
+            author_email: comment.authorEmail,
+            // Nuovi campi per sistema incasso/guadagno/compensi
+            income_total: comment.incomeTotal || null,
+            animator_profit: comment.animatorProfit || null,
+            animator_expenses: comment.animatorExpenses || null,
+            agency_fee: comment.agencyFee || null,
+            agency_fee_delivered: comment.agencyFeeDelivered || false,
+            agency_fee_delivered_at: comment.agencyFeeDeliveredAt || null,
+            agency_fee_confirmed: comment.agencyFeeConfirmed || false,
+            agency_fee_confirmed_at: comment.agencyFeeConfirmedAt || null,
+            agency_fee_confirmed_by: comment.agencyFeeConfirmedBy || null,
+            delivery_status: comment.deliveryStatus || null
         };
 
         const { data, error } = await sb
@@ -29244,11 +29731,25 @@ async function loadEventCommentsFromCloud(eventCommentId) {
             authorName: c.author_name,
             authorEmail: c.author_email,
             createdAt: c.created_at,
-            _supabaseId: c.id
+            _supabaseId: c.id,
+            // Nuovi campi per sistema incasso/guadagno/compensi
+            incomeTotal: c.income_total,
+            animatorProfit: c.animator_profit,
+            animatorExpenses: c.animator_expenses,
+            agencyFee: c.agency_fee,
+            agencyFeeDelivered: c.agency_fee_delivered,
+            agencyFeeDeliveredAt: c.agency_fee_delivered_at,
+            agencyFeeConfirmed: c.agency_fee_confirmed,
+            agencyFeeConfirmedAt: c.agency_fee_confirmed_at,
+            agencyFeeConfirmedBy: c.agency_fee_confirmed_by,
+            deliveryStatus: c.delivery_status
         }));
 
         state.eventComments[eventCommentId] = comments;
         console.log(`✅ Caricati ${comments.length} commenti evento da Supabase`);
+
+        // Aggiorna pulsante consegna
+        updateAgencyDeliveryButton(eventCommentId);
 
     } catch (error) {
         console.error('❌ Errore loadEventCommentsFromCloud:', error);
