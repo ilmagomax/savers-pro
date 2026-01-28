@@ -1,5 +1,5 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-28 - BUG FIX IN CORSO
+> Aggiornato: 2026-01-28 - FASE 2 COMPLETATA
 
 ## STATO PROGETTO
 
@@ -7,26 +7,22 @@
 - [x] FASE 0: Setup Progetto (GitHub, Vercel, CSS estratto)
 - [x] FASE 1: Auth Migration a Supabase (Google OAuth funzionante)
 - [x] RLS Policies fixate (profiles + organizations)
-- [x] **FASE 2: Migrazione Dati Personali** (parzialmente - vedi bug)
+- [x] **FASE 2: Migrazione Dati Personali** - COMPLETATA
   - [x] Habits + Habit Logs
   - [x] Tasks
-  - [x] Transactions (CRUD + edit modal aggiunto)
-  - [x] Books
-  - [x] Goals
-  - [x] Notes
+  - [x] Transactions (CRUD + edit/delete modal funzionante)
+  - [x] Books (testato - funzionante)
+  - [x] Goals (testato - funzionante)
+  - [x] Notes (testato - funzionante)
   - [x] SAVERS Logs
   - [x] Pomodoro Sessions
-  - [x] Money Goals (NUOVO - CRUD aggiunto)
+  - [x] Money Goals (testato - funzionante con Supabase)
 
-### BUG CRITICI DA RISOLVERE (PROSSIMA SESSIONE)
+### Bug Risolti (2026-01-28)
 
-1. **Pagina vuota dopo login** - La pagina mostra solo "// Deploy trigger 1769624005" invece del contenuto
-   - Probabile errore JavaScript che blocca il rendering
-   - Controllare console per errori
+1. **Fix showModal function** - La funzione `showModal()` non mostrava i modal dinamici perché creava un `<div class="modal">` invece di `<div class="modal-overlay"><div class="modal">...</div></div>`. Fixato in commit 783ed9f.
 
-2. **Money Goals migration** - Eseguire `sql/04-money-goals.sql` in Supabase Dashboard
-
-3. **Service Worker cache** - Dopo fix, fare hard refresh (Cmd+Shift+R) per aggiornare
+2. **Money Goals** - Tabella già presente in Supabase, modulo testato e funzionante
 
 ### Da Fare (Prossime Fasi)
 - [ ] FASE 3: Team & Progetti
@@ -95,25 +91,12 @@ await Promise.all([
 ```
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
 
-PRIORITA' 1: Fix bug pagina vuota
-1. Apri https://savers-pro.vercel.app con DevTools console aperta
-2. Identifica l'errore JavaScript che blocca il rendering
-3. Il contenuto della pagina non viene mostrato, solo "// Deploy trigger"
+FASE 2 COMPLETATA - Tutti i moduli personali funzionano:
+- Habits, Tasks, Transactions, Books, Goals, Notes, Money Goals
 
-PRIORITA' 2: Esegui migration Money Goals
-1. Vai su Supabase Dashboard > SQL Editor
-2. Esegui il contenuto di sql/04-money-goals.sql
-
-PRIORITA' 3: Test moduli
-- Habits (funziona)
-- Tasks (funziona)
-- Transactions (testare edit/delete)
-- Books (da testare)
-- Goals (da testare)
-- Notes (da testare)
-- Money Goals (da testare dopo migration)
-
-Usa il metodo Ralph Loop.
+PROSSIMA PRIORITA': FASE 3 - Team & Progetti
+- Migrazione funzionalità team a Supabase
+- Progetti condivisi con membri del team
 ```
 
 ---
@@ -143,7 +126,7 @@ Usa il metodo Ralph Loop.
 
 - [x] FASE0_COMPLETE
 - [x] FASE1_AUTH_COMPLETE
-- [ ] FASE2_PERSONAL_DATA_COMPLETE (bug da fixare)
+- [x] FASE2_PERSONAL_DATA_COMPLETE
 - [ ] FASE3_TEAM_COMPLETE
 - [ ] FASE4_COURSES_COMPLETE
 - [ ] FASE5_SHOP_COMPLETE
