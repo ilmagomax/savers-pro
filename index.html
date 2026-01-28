@@ -4660,12 +4660,30 @@ async function ensureUserProfile() {
 
     try {
         console.log('📡 Loading profile for user:', currentUser.id);
-        // Cerca profilo esistente - query semplificata senza join
-        let { data: profile, error } = await sb
+        const testStart = Date.now();
+
+        // Query con timeout
+        const queryPromise = sb
             .from('profiles')
             .select('*')
             .eq('id', currentUser.id)
             .single();
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout 10s')), 10000)
+        );
+
+        let profile, error;
+        try {
+            const result = await Promise.race([queryPromise, timeoutPromise]);
+            profile = result.data;
+            error = result.error;
+            console.log('📡 Profile query completed in', Date.now() - testStart, 'ms');
+        } catch (timeoutErr) {
+            console.error('⏱️ Supabase timeout:', timeoutErr.message);
+            console.log('⚠️ Skipping Supabase, using local data only');
+            return;
+        }
 
         console.log('📡 Profile query result:', { profile: !!profile, error });
 
