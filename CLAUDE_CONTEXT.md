@@ -1,5 +1,5 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-28 - Sistema Compensi Agenzia per Animatori
+> Aggiornato: 2026-01-29 - Sistema Compensi Agenzia per Animatori
 
 ## STATO PROGETTO ATTUALE
 
@@ -47,37 +47,59 @@ Sistema di gestione compensi per agenzie di animazione con flusso bidirezionale 
 - Guadagno: €50
 - Compensi Ag.: €30
 
-#### Funzioni Chiave (index.html)
-- `renderAgencyFeeWallet()` - Wallet Compensi mensile (~riga 17653)
-- `openAgencyFeeDetail()` - Modal dettaglio compensi
-- `markAgencyFeesAsDelivered()` - Animatore segna consegnato
-- `confirmAgencyFeesReceived()` - Owner conferma ricezione
-- `openEditAgencyFee()` / `saveAgencyFeeModification()` - Owner modifica
-- `acceptOwnerModification()` / `rejectOwnerModification()` - Animatore accetta/rifiuta
-- `getAgencyFeesForMonth(yearMonth)` - Calcola compensi per mese (~riga 17570)
-- `renderEventsDashboard()` - Dashboard Feste & Eventi (~riga 18737)
-- `renderEventFinanceSummaryFromComments()` - Riepilogo evento (~riga 17314)
-- `showEventFinanceDetail()` - Dettaglio evento dalla dashboard (~riga 19215)
-- `canSeeFinancialComment()` - Controllo visibilità commenti (~riga 30842)
+#### Identificazione Eventi Duplicati (NUOVO!)
+
+Gli eventi duplicati su calendari diversi vengono unificati tramite hash:
+```javascript
+// Hash universale = titolo (lowercase) + data/ora (normalizzata)
+// SENZA organizer - così eventi duplicati hanno stesso ID
+const summary = event.summary.trim().toLowerCase();
+const startTime = normalizeDateTime(event.start.dateTime);
+const universalId = 'evt_' + simpleHash(`${summary}|${startTime}`);
+```
+
+**Funzione chiave**: `getEventCommentId(event, isGoogle)` (~riga 29835)
+
+Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
+- event.id (specifico calendario)
+- iCalUID
+- recurringEventId
+- Hash universale (titolo + data/ora)
 
 #### Permessi Modifica/Elimina Commenti
 - **Owner/Admin**: Può SEMPRE modificare/eliminare qualsiasi commento
 - **Animatore**: Può modificare/eliminare SOLO i propri commenti entro 5 minuti
 
-### Bug Risolti Oggi (2026-01-28)
+#### Funzioni Chiave (index.html)
+- `getEventCommentId(event, isGoogle)` - Genera ID universale (~riga 29835)
+- `simpleHash(str)` - Hash deterministico (~riga 29875)
+- `renderAgencyFeeWallet()` - Wallet Compensi mensile (~riga 17653)
+- `openAgencyFeeDetail()` - Modal dettaglio compensi
+- `markAgencyFeesAsDelivered()` - Animatore segna consegnato
+- `confirmAgencyFeesReceived()` - Owner conferma ricezione
+- `getAgencyFeesForMonth(yearMonth)` - Calcola compensi per mese (~riga 17570)
+- `renderEventsDashboard()` - Dashboard Feste & Eventi (~riga 18737)
+- `renderEventFinanceSummaryFromComments()` - Riepilogo evento (~riga 17314)
+- `showEventFinanceDetail()` - Dettaglio evento dalla dashboard (~riga 19215)
+- `canSeeFinancialComment()` - Controllo visibilità commenti (~riga 30880)
+- `renderEventComments()` - Renderizza commenti con unificazione (~riga 30137)
+
+### Bug Risolti (2026-01-28/29)
 
 1. **Calcoli finanziari errati** - Usava `animatorEarning` invece di `animatorProfit`
 2. **guadagnoAnimatore mancante** - Variabile non dichiarata in showEventFinanceDetail
-3. **Fallback calcolo** - Aggiunto: se `animatorProfit` è null, calcola `incomeTotal - agencyFee - animatorExpenses`
+3. **Fallback calcolo** - Se `animatorProfit` è null, calcola `incomeTotal - agencyFee - animatorExpenses`
 4. **Owner vede tutti i commenti** - Aggiunto check `isOwnerOrAdmin` in `canSeeFinancialComment()`
 5. **Owner può sempre editare** - Rimosso limite 5 minuti per owner/admin
+6. **Eventi duplicati** - Hash universale basato su titolo+data/ora (senza organizer)
 
-### Da Completare
+### Da Completare / Testare
 
-- [ ] Verificare che owner veda commenti da calendari diversi (stesso evento)
+- [ ] Verificare unificazione commenti su eventi duplicati
 - [ ] Testare flusso completo consegna compensi
 - [ ] Testare modifica importo da owner e accetta/rifiuta da animatore
 - [ ] Click su evento dalla dashboard Feste & Eventi
+- [ ] Eventuale migrazione commenti vecchi con ID sbagliato
 
 ---
 
@@ -115,16 +137,24 @@ Sistema di gestione compensi per agenzie di animazione con flusso bidirezionale 
 ```
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
 
-CONTESTO: Sistema Compensi Agenzia per animatori.
-- Flusso bidirezionale: Animatore consegna → Owner conferma/modifica → Animatore accetta/rifiuta
-- Vista differenziata: Owner vede profitto agenzia, Animatore vede suo guadagno
-- Campi chiave: incomeTotal, animatorProfit, animatorExpenses, agencyFee
+CONTESTO: Sistema Compensi Agenzia per animatori in SAVERS PRO.
 
-DA VERIFICARE:
-1. Owner vede TUTTI i commenti finanziari (anche da calendari diversi)
-2. Calcoli corretti: Guadagno=animatorProfit, Spese=animatorExpenses
-3. Click evento dalla dashboard Feste & Eventi funziona
-4. Flusso consegna compensi completo
+PROBLEMA RISOLTO: Eventi duplicati su calendari diversi ora unificati tramite hash(titolo+data/ora)
+
+CAMPI CHIAVE nei commenti finanziari:
+- incomeTotal: Ritiro Saldo totale
+- animatorProfit: Guadagno animatore
+- animatorExpenses: Spese animatore
+- agencyFee: Compensi Agenzia
+
+PERMESSI:
+- Owner/Admin: vede TUTTI i commenti, può sempre editare/eliminare
+- Animatore: vede solo propri commenti, edita entro 5 minuti
+
+DA TESTARE:
+1. Unificazione commenti eventi duplicati su calendari diversi
+2. Calcoli corretti nelle viste (Agenzia vs Animatore)
+3. Flusso consegna compensi
 
 FILE PRINCIPALE: /Users/ilmagicartista/Downloads/savers pro per la vendita/index.html
 ```
