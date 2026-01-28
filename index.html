@@ -4775,17 +4775,39 @@ async function ensureUserProfile() {
         userProfile = profile;
         userOrganization = organization;
 
-        // Aggiorna anche lo state dell'app
+        // Aggiorna anche lo state dell'app con mappatura campi
         if (typeof state !== 'undefined') {
-            state.profile = profile;
+            state.profile = {
+                ...state.profile, // Preserva dati locali esistenti
+                name: profile?.full_name,
+                email: profile?.email,
+                profession: profile?.profession,
+                stageName: profile?.stage_name,
+                picture: profile?.avatar_url,
+                avatar: profile?.avatar_url,
+                // Dati Supabase raw
+                ...profile
+            };
             state.organization = organization;
             state.organizationId = profile?.organization_id;
+
+            // Aggiorna anche state.user per compatibilità
+            state.user = state.user || {};
+            state.user.name = profile?.full_name;
+            state.user.profession = profile?.profession;
+            state.user.nickname = profile?.stage_name;
         }
 
         // Aggiorna UI profilo
         updateSupabaseProfileUI();
+        if (typeof updateProfileUI === 'function') {
+            updateProfileUI();
+        }
+        if (typeof updateHeaderAvatar === 'function') {
+            updateHeaderAvatar();
+        }
 
-        console.log('✅ Profile loaded:', profile?.full_name);
+        console.log('✅ Profile loaded:', profile?.full_name, 'profession:', profile?.profession, 'stageName:', profile?.stage_name);
 
         // Load all data from Supabase in parallel
         await Promise.all([
@@ -10536,7 +10558,7 @@ function openProfileModal() {
     openModal('profileModal');
 }
 
-function saveProfile() {
+async function saveProfile() {
     // Preserva i dati Google esistenti
     const existingProfile = state.profile || {};
 
@@ -10560,6 +10582,30 @@ function saveProfile() {
     state.user.profession = profile.profession;
     state.user.nickname = profile.stageName;
 
+    // Salva su Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        try {
+            const { error } = await sb
+                .from('profiles')
+                .update({
+                    full_name: profile.name,
+                    profession: profile.profession,
+                    stage_name: profile.stageName,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', currentUser.id);
+
+            if (error) {
+                console.error('Error saving profile to Supabase:', error);
+            } else {
+                console.log('✅ Profile saved to Supabase');
+            }
+        } catch (err) {
+            console.error('Error in saveProfile:', err);
+        }
+    }
+
     // Salva profilo anche in localStorage come backup
     try {
         localStorage.setItem('savers_profile_backup', JSON.stringify(profile));
@@ -10567,12 +10613,6 @@ function saveProfile() {
     } catch (e) {
         console.warn('Impossibile salvare profilo in localStorage:', e);
     }
-
-    // IMPORTANTE: Marca profilo e user come modificati per il sync
-    markCollectionDirty('profile');
-    markCollectionDirty('user');
-
-    saveStateAndSync();
 
     // Update header avatar and greeting
     updateHeaderAvatar();
