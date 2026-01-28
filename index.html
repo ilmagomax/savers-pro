@@ -19308,6 +19308,19 @@ function showEventFinanceDetail(eventId) {
         .filter(c => c.type === 'income' && c.agencyFee > 0)
         .reduce((s, c) => s + (c.agencyFee || 0), 0);
 
+    // Guadagno animatore (animatorProfit, con fallback a calcolo)
+    const guadagnoAnimatore = financialComments
+        .filter(c => c.type === 'income')
+        .reduce((s, c) => {
+            if (c.animatorProfit !== undefined && c.animatorProfit !== null) {
+                return s + c.animatorProfit;
+            }
+            const incomeTotal = c.incomeTotal || c.amount || 0;
+            const agencyFee = c.agencyFee || 0;
+            const expenses = c.animatorExpenses || 0;
+            return s + (incomeTotal - agencyFee - expenses);
+        }, 0);
+
     // Calcoli differenziati per animatore/proprietario
     let summaryHtml;
     if (isOwnerOrAdmin) {
