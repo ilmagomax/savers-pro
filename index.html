@@ -4661,9 +4661,11 @@ async function updateHabitStreakInDB(habitId) {
 // Ensure user profile exists in database
 async function ensureUserProfile() {
     const sb = getSupabase();
+    console.log('🔍 ensureUserProfile called, sb:', !!sb, 'currentUser:', !!currentUser);
     if (!currentUser || !sb) return;
 
     try {
+        console.log('📡 Starting profile query for:', currentUser.id);
         // Query con timeout di 15s per connessioni lente
         const queryPromise = sb.from('profiles').select('*').eq('id', currentUser.id).single();
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000));
@@ -7218,10 +7220,11 @@ function saveStateAndSync(modifiedCollection = null, modifiedItemId = null) {
         }
     }
 
-    // Se Supabase è attivo, i dati personali sono già salvati lì - skip Google Sheets
+    // Se Supabase è attivo, skip Google Sheets sync
+    // Controllo anche se il client Supabase esiste (anche senza currentUser ancora settato)
     const sb = getSupabase();
-    if (sb && currentUser) {
-        console.log('⏭️ Skipping Google Sheets sync (using Supabase)');
+    if (sb) {
+        // Supabase è inizializzato - non serve Google Sheets sync
         return;
     }
 
