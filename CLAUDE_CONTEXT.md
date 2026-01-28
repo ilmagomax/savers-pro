@@ -1,25 +1,23 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-28
+> Aggiornato: 2026-01-28 - Login Funzionante!
 
 ## STATO PROGETTO
 
-### Completato
+### ✅ Completato
 - [x] Piano dettagliato approvato
-- [x] Repository GitHub creato: https://github.com/ilmagomax/savers-pro
-- [x] Struttura cartelle base
-- [x] File configurazione (.gitignore, .env.example, vercel.json)
-- [x] index.html copiato da savers-pro-v5.html
-- [x] manifest.json e sw.js copiati
+- [x] Repository GitHub: https://github.com/ilmagomax/savers-pro
+- [x] Deploy Vercel: https://savers-pro.vercel.app
+- [x] CSS estratto in file separato
+- [x] Supabase configurato e funzionante
+- [x] Google OAuth configurato (Test mode, email aggiunto come tester)
+- [x] **LOGIN FUNZIONANTE** - Auth Supabase con Google OAuth
+- [x] Creazione automatica profilo utente
 
-### In Corso
-- [ ] FASE 0: Setup Supabase integration
-
-### Da Fare
-- [ ] FASE 1: Auth Migration
-- [ ] FASE 2: Migrazione Dati Personali
+### 🔄 Da Fare (Prossime Fasi)
+- [ ] FASE 2: Migrazione Dati Personali (Habits, Tasks, Transactions, ecc.)
 - [ ] FASE 3: Team & Progetti
-- [ ] FASE 4: Videocorsi
-- [ ] FASE 5: Shop
+- [ ] FASE 4: Videocorsi (con link a GHL/Arcanis)
+- [ ] FASE 5: Shop (con link a GHL/Arcanis)
 - [ ] FASE 6: Push Notifications
 - [ ] FASE 7: PWA Optimization
 - [ ] FASE 8: Directus CMS Setup
@@ -30,91 +28,113 @@
 
 ### Repository
 - **GitHub**: https://github.com/ilmagomax/savers-pro
+- **Vercel**: https://savers-pro.vercel.app
 - **Branch**: main
-- **Deploy Target**: Vercel
 
 ### Supabase
-- **URL**: DA CONFIGURARE
-- **Anon Key**: DA CONFIGURARE
-- **Region**: Frankfurt (eu-central-1)
+- **URL**: https://lsrzcsymiuoutcmhcain.supabase.co
+- **Anon Key**: sb_publishable_NFzbjbgsGgEn5enQg7M2VQ_XJoFb9RM
+- **Site URL**: https://savers-pro.vercel.app
+- **Redirect URLs**: https://savers-pro.vercel.app, https://savers-pro.vercel.app/**
 
-### Tecnologie
-- Frontend: HTML/CSS/JS (single file, poi modularizzato)
-- Backend: Supabase (Auth, Database, Realtime)
-- PWA: manifest.json + sw.js
-- Push: Web Push API + OneSignal (opzionale)
-- CMS: Directus (self-hosted)
+### Google OAuth
+- **Progetto**: SAVERS Pro
+- **Status**: Testing mode (email aggiunto come tester)
+- **Redirect URI**: https://lsrzcsymiuoutcmhcain.supabase.co/auth/v1/callback
 
 ---
 
-## FASI RALPH LOOP
+## STRUTTURA FILE
 
-### FASE 0: Setup Progetto ⏳
 ```
-Promise: FASE0_COMPLETE
-Status: IN PROGRESS
-```
-Tasks:
-- [x] Creare struttura cartelle
-- [x] Copiare file esistenti
-- [x] Creare repo GitHub
-- [ ] Estrarre CSS in file separato
-- [ ] Aggiungere Supabase client
-- [ ] Verificare console "Supabase initialized: OK"
-
-### FASE 1: Auth Migration
-```
-Promise: FASE1_AUTH_COMPLETE
-Status: PENDING
-```
-
-### FASE 2: Migrazione Dati
-```
-Promise: FASE2_PERSONAL_DATA_COMPLETE
-Status: PENDING
-```
-
-### FASE 3: Team & Progetti
-```
-Promise: FASE3_TEAM_COMPLETE
-Status: PENDING
-```
-
-### FASE 4: Videocorsi
-```
-Promise: FASE4_COURSES_COMPLETE
-Status: PENDING
-```
-
-### FASE 5: Shop
-```
-Promise: FASE5_SHOP_COMPLETE
-Status: PENDING
-```
-
-### FASE 6: Push Notifications
-```
-Promise: FASE6_PUSH_COMPLETE
-Status: PENDING
+/Users/ilmagicartista/Downloads/savers pro per la vendita/
+├── index.html              # App principale (~26k righe)
+├── css/styles.css          # CSS estratto (8910 righe)
+├── manifest.json           # PWA config
+├── sw.js                   # Service Worker
+├── vercel.json             # Deploy config
+├── .env.example            # Template variabili
+├── .gitignore
+├── CLAUDE_CONTEXT.md       # Questo file
+├── SAVERS-PRO-COMPLETE-GUIDE.md  # Guida originale
+└── sql/
+    ├── 01-base-schema.sql  # Schema DB base (già eseguito)
+    └── new-features.sql    # Schema per Videocorsi, Shop, Push
 ```
 
 ---
 
-## NOTE PER PROSSIMA CHAT
+## CODICE CHIAVE
 
-Se questa chat raggiunge il limite di contesto, apri nuova chat con:
+### Supabase Client (nel head)
+```javascript
+const SUPABASE_URL = 'https://lsrzcsymiuoutcmhcain.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_NFzbjbgsGgEn5enQg7M2VQ_XJoFb9RM';
+
+function getSupabase() {
+    if (supabaseClient) return supabaseClient;
+    if (window.supabase && window.supabase.createClient) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        return supabaseClient;
+    }
+    return null;
+}
+```
+
+### Funzioni Auth principali
+- `loginWithGoogle()` - Login con Supabase OAuth
+- `logout()` - Logout da Supabase
+- `setupSupabaseAuth()` - Auth state listener
+- `ensureUserProfile()` - Crea/carica profilo utente
+- `checkExistingSession()` - Verifica sessione esistente
+
+---
+
+## PROSSIMI PASSI (FASE 2)
+
+La FASE 2 riguarda la migrazione dei dati da localStorage a Supabase:
+
+1. **Habits** - Tabella `habits` + `habit_logs`
+2. **Tasks** - Tabella `tasks` (personali, non di progetto)
+3. **Transactions** - Tabella `transactions`
+4. **Books** - Tabella `books`
+5. **Goals** - Tabella `goals`
+6. **SAVERS Logs** - Tabella `savers_logs`
+7. **Notes** - Tabella `notes`
+8. **Pomodoro** - Tabella `pomodoro_sessions`
+
+Pattern da usare:
+- `load[Module]FromDB()` - Carica da Supabase
+- `save[Module]ToDB(item)` - Salva su Supabase
+- `update[Module]InDB(id, updates)` - Aggiorna
+- `delete[Module]FromDB(id)` - Elimina
+- `migrate[Module]FromLocalStorage()` - Migra dati esistenti
+
+---
+
+## NOTE PER NUOVA CHAT
+
+Quando apri una nuova chat, usa questo prompt:
 
 ```
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
-e continua da dove eri rimasto. Usa il metodo Ralph Loop.
+e continua con la FASE 2: Migrazione Dati Personali.
+
+Usa il metodo Ralph Loop:
+- Prompt strutturati con obiettivi chiari
+- Criteri di successo verificabili
+- Promise tag per tracciare completamento
+- Aggiorna CLAUDE_CONTEXT.md al termine di ogni fase
 ```
 
 ---
 
-## FILE IMPORTANTI
+## PROMISE TAGS
 
-- `/index.html` - App principale
-- `/manifest.json` - PWA config
-- `/sw.js` - Service Worker
-- `/sql/new-features.sql` - Schema nuove tabelle
-- `/SAVERS-PRO-COMPLETE-GUIDE.md` - Guida completa originale
+- [x] FASE0_COMPLETE
+- [x] FASE1_AUTH_COMPLETE
+- [ ] FASE2_PERSONAL_DATA_COMPLETE
+- [ ] FASE3_TEAM_COMPLETE
+- [ ] FASE4_COURSES_COMPLETE
+- [ ] FASE5_SHOP_COMPLETE
+- [ ] FASE6_PUSH_COMPLETE
