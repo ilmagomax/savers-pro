@@ -4716,11 +4716,18 @@ async function ensureUserProfile() {
 
         console.log('✅ Profile loaded:', profile?.full_name);
 
-        // Load data from Supabase (habits and tasks in parallel)
+        // Load all data from Supabase in parallel
         await Promise.all([
             loadHabitsFromSupabase(),
-            loadTasksFromSupabase()
+            loadTasksFromSupabase(),
+            loadTransactionsFromSupabase(),
+            loadBooksFromSupabase(),
+            loadGoalsFromSupabase(),
+            loadNotesFromSupabase(),
+            loadSaversLogsFromSupabase()
         ]);
+
+        console.log('✅ All data loaded from Supabase');
 
     } catch (err) {
         console.error('Profile error:', err);
@@ -5072,6 +5079,410 @@ async function migrateLocalTasksToSupabase() {
         console.log(`✅ Migrated ${migrated} tasks to Supabase`);
         showToast(`${migrated} task migrati al cloud`, 'success');
     }
+}
+
+// ============================================
+// TRANSACTIONS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function loadTransactionsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb
+            .from('transactions')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('date', { ascending: false });
+        if (error) { console.error('Error loading transactions:', error); return []; }
+        return data.map(t => ({
+            id: t.id, type: t.type, amount: parseFloat(t.amount), description: t.description,
+            category: t.category, date: t.date, method: t.payment_method,
+            department: t.department, recurring: t.is_recurring, createdAt: t.created_at,
+            _supabaseId: t.id
+        }));
+    } catch (err) { console.error('Error in loadTransactionsFromDB:', err); return []; }
+}
+
+async function saveTransactionToDB(tx) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('transactions').insert({
+            user_id: currentUser.id, type: tx.type, amount: tx.amount,
+            description: tx.description || null, category: tx.category,
+            date: tx.date, department: tx.department || 'personal',
+            payment_method: tx.method || null, is_recurring: tx.recurring || false
+        }).select().single();
+        if (error) { console.error('Error saving transaction:', error); return null; }
+        return data;
+    } catch (err) { console.error('Error in saveTransactionToDB:', err); return null; }
+}
+
+async function deleteTransactionFromDB(txId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const { error } = await sb.from('transactions').delete().eq('id', txId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function loadTransactionsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        const dbTx = await loadTransactionsFromDB();
+        if (dbTx && dbTx.length > 0) {
+            state.transactions = dbTx;
+            console.log(`✅ Loaded ${dbTx.length} transactions from Supabase`);
+        } else if (state.transactions?.length > 0) {
+            await migrateLocalTransactionsToSupabase();
+        }
+    } catch (err) { console.error('Error loading transactions:', err); }
+}
+
+async function migrateLocalTransactionsToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.transactions) return;
+    let migrated = 0;
+    for (const tx of state.transactions) {
+        if (tx._supabaseId || (tx.id?.length === 36 && tx.id?.includes('-'))) continue;
+        const dbTx = await saveTransactionToDB(tx);
+        if (dbTx) { tx._supabaseId = dbTx.id; tx.id = dbTx.id; migrated++; }
+    }
+    if (migrated > 0) { console.log(`✅ Migrated ${migrated} transactions`); showToast(`${migrated} transazioni migrate`, 'success'); }
+}
+
+// ============================================
+// BOOKS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function loadBooksFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb.from('books').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+        if (error) return [];
+        return data.map(b => ({
+            id: b.id, title: b.title, author: b.author, cover: b.cover_url,
+            status: b.status, pagesTotal: b.pages_total, pagesRead: b.pages_read,
+            rating: b.rating, review: b.review, notes: b.notes,
+            startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
+            _supabaseId: b.id
+        }));
+    } catch (err) { return []; }
+}
+
+async function saveBookToDB(book) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('books').insert({
+            user_id: currentUser.id, title: book.title, author: book.author,
+            cover_url: book.cover, status: book.status || 'to_read',
+            pages_total: book.pagesTotal, pages_read: book.pagesRead || 0,
+            rating: book.rating, notes: book.notes
+        }).select().single();
+        return error ? null : data;
+    } catch (err) { return null; }
+}
+
+async function updateBookInDB(bookId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const dbUpdates = {};
+        if (updates.status !== undefined) dbUpdates.status = updates.status;
+        if (updates.pagesRead !== undefined) dbUpdates.pages_read = updates.pagesRead;
+        if (updates.rating !== undefined) dbUpdates.rating = updates.rating;
+        if (updates.review !== undefined) dbUpdates.review = updates.review;
+        if (updates.finishedAt !== undefined) dbUpdates.finished_at = updates.finishedAt;
+        const { error } = await sb.from('books').update(dbUpdates).eq('id', bookId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function deleteBookFromDB(bookId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const { error } = await sb.from('books').delete().eq('id', bookId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function loadBooksFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        const dbBooks = await loadBooksFromDB();
+        if (dbBooks && dbBooks.length > 0) {
+            state.books = dbBooks;
+            console.log(`✅ Loaded ${dbBooks.length} books from Supabase`);
+        } else if (state.books?.length > 0) {
+            await migrateLocalBooksToSupabase();
+        }
+    } catch (err) { console.error('Error loading books:', err); }
+}
+
+async function migrateLocalBooksToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.books) return;
+    let migrated = 0;
+    for (const book of state.books) {
+        if (book._supabaseId) continue;
+        const dbBook = await saveBookToDB(book);
+        if (dbBook) { book._supabaseId = dbBook.id; book.id = dbBook.id; migrated++; }
+    }
+    if (migrated > 0) console.log(`✅ Migrated ${migrated} books`);
+}
+
+// ============================================
+// GOALS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function loadGoalsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb.from('goals').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+        if (error) return [];
+        return data.map(g => ({
+            id: g.id, title: g.title, description: g.description, type: g.type,
+            timeframe: g.timeframe, targetValue: parseFloat(g.target_value) || 0,
+            currentValue: parseFloat(g.current_value) || 0, unit: g.unit,
+            status: g.status, dueDate: g.due_date, department: g.department,
+            createdAt: g.created_at, _supabaseId: g.id
+        }));
+    } catch (err) { return []; }
+}
+
+async function saveGoalToDB(goal) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('goals').insert({
+            user_id: currentUser.id, title: goal.title, description: goal.description,
+            type: goal.type || 'personal', timeframe: goal.timeframe || 'monthly',
+            target_value: goal.targetValue, current_value: goal.currentValue || 0,
+            unit: goal.unit, due_date: goal.dueDate, department: goal.department || 'personal'
+        }).select().single();
+        return error ? null : data;
+    } catch (err) { return null; }
+}
+
+async function updateGoalInDB(goalId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const dbUpdates = {};
+        if (updates.currentValue !== undefined) dbUpdates.current_value = updates.currentValue;
+        if (updates.status !== undefined) dbUpdates.status = updates.status;
+        if (updates.title !== undefined) dbUpdates.title = updates.title;
+        const { error } = await sb.from('goals').update(dbUpdates).eq('id', goalId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function deleteGoalFromDB(goalId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const { error } = await sb.from('goals').delete().eq('id', goalId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function loadGoalsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        const dbGoals = await loadGoalsFromDB();
+        if (dbGoals && dbGoals.length > 0) {
+            state.goals = dbGoals;
+            console.log(`✅ Loaded ${dbGoals.length} goals from Supabase`);
+        } else if (state.goals?.length > 0) {
+            await migrateLocalGoalsToSupabase();
+        }
+    } catch (err) { console.error('Error loading goals:', err); }
+}
+
+async function migrateLocalGoalsToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.goals) return;
+    let migrated = 0;
+    for (const goal of state.goals) {
+        if (goal._supabaseId) continue;
+        const dbGoal = await saveGoalToDB(goal);
+        if (dbGoal) { goal._supabaseId = dbGoal.id; goal.id = dbGoal.id; migrated++; }
+    }
+    if (migrated > 0) console.log(`✅ Migrated ${migrated} goals`);
+}
+
+// ============================================
+// NOTES - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function loadNotesFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb.from('notes').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false });
+        if (error) return [];
+        return data.map(n => ({
+            id: n.id, title: n.title, content: n.content, color: n.color,
+            isPinned: n.is_pinned, tags: n.tags || [], createdAt: n.created_at,
+            updatedAt: n.updated_at, _supabaseId: n.id
+        }));
+    } catch (err) { return []; }
+}
+
+async function saveNoteToDB(note) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('notes').insert({
+            user_id: currentUser.id, title: note.title, content: note.content,
+            color: note.color || '#ffffff', is_pinned: note.isPinned || false,
+            tags: note.tags || []
+        }).select().single();
+        return error ? null : data;
+    } catch (err) { return null; }
+}
+
+async function updateNoteInDB(noteId, updates) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const dbUpdates = { updated_at: new Date().toISOString() };
+        if (updates.title !== undefined) dbUpdates.title = updates.title;
+        if (updates.content !== undefined) dbUpdates.content = updates.content;
+        if (updates.color !== undefined) dbUpdates.color = updates.color;
+        if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
+        if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
+        const { error } = await sb.from('notes').update(dbUpdates).eq('id', noteId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function deleteNoteFromDB(noteId) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return false;
+    try {
+        const { error } = await sb.from('notes').delete().eq('id', noteId).eq('user_id', currentUser.id);
+        return !error;
+    } catch (err) { return false; }
+}
+
+async function loadNotesFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        const dbNotes = await loadNotesFromDB();
+        if (dbNotes && dbNotes.length > 0) {
+            state.notes = dbNotes;
+            console.log(`✅ Loaded ${dbNotes.length} notes from Supabase`);
+        } else if (state.notes?.length > 0) {
+            await migrateLocalNotesToSupabase();
+        }
+    } catch (err) { console.error('Error loading notes:', err); }
+}
+
+async function migrateLocalNotesToSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser || !state.notes) return;
+    let migrated = 0;
+    for (const note of state.notes) {
+        if (note._supabaseId) continue;
+        const dbNote = await saveNoteToDB(note);
+        if (dbNote) { note._supabaseId = dbNote.id; note.id = dbNote.id; migrated++; }
+    }
+    if (migrated > 0) console.log(`✅ Migrated ${migrated} notes`);
+}
+
+// ============================================
+// SAVERS LOGS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function loadSaversLogsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return [];
+    try {
+        const { data, error } = await sb.from('savers_logs').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }).limit(30);
+        if (error) return [];
+        return data;
+    } catch (err) { return []; }
+}
+
+async function saveSaversLogToDB(log) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('savers_logs').upsert({
+            user_id: currentUser.id, date: log.date,
+            silence_completed: log.silence, affirmations_completed: log.affirmations,
+            visualization_completed: log.visualization, exercise_completed: log.exercise,
+            reading_completed: log.reading, scribing_completed: log.scribing,
+            mood: log.mood, sleep_hours: log.sleepHours, water_glasses: log.waterGlasses
+        }, { onConflict: 'user_id,date' }).select().single();
+        return error ? null : data;
+    } catch (err) { return null; }
+}
+
+async function loadSaversLogsFromSupabase() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+        const dbLogs = await loadSaversLogsFromDB();
+        if (dbLogs && dbLogs.length > 0) {
+            state.saversLogs = dbLogs;
+            console.log(`✅ Loaded ${dbLogs.length} SAVERS logs from Supabase`);
+        }
+    } catch (err) { console.error('Error loading SAVERS logs:', err); }
+}
+
+// ============================================
+// POMODORO SESSIONS - SUPABASE CRUD FUNCTIONS
+// ============================================
+
+async function savePomodoroSessionToDB(session) {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return null;
+    try {
+        const { data, error } = await sb.from('pomodoro_sessions').insert({
+            user_id: currentUser.id, task_id: session.taskId || null,
+            started_at: session.startedAt, ended_at: session.endedAt,
+            duration_minutes: session.duration || 25, type: session.type || 'work',
+            completed: session.completed || true, notes: session.notes
+        }).select().single();
+        return error ? null : data;
+    } catch (err) { return null; }
+}
+
+async function loadPomodoroStatsFromDB() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return { today: 0, week: 0, total: 0 };
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+        const { data, error } = await sb.from('pomodoro_sessions')
+            .select('started_at, duration_minutes')
+            .eq('user_id', currentUser.id)
+            .eq('completed', true)
+            .gte('started_at', weekAgo);
+
+        if (error) return { today: 0, week: 0, total: 0 };
+
+        let todayCount = 0, weekCount = 0;
+        data.forEach(s => {
+            weekCount++;
+            if (s.started_at?.startsWith(today)) todayCount++;
+        });
+
+        return { today: todayCount, week: weekCount, total: data.length };
+    } catch (err) { return { today: 0, week: 0, total: 0 }; }
 }
 
 // Update profile info in UI
@@ -12396,50 +12807,44 @@ function addKeyResultInput() {
     container.appendChild(input);
 }
 
-function saveGoal() {
+async function saveGoal() {
     const title = document.getElementById('goalTitle').value.trim();
-    if (!title) {
-        showToast('Inserisci un titolo', 'error');
-        return;
-    }
+    if (!title) { showToast('Inserisci un titolo', 'error'); return; }
 
     const keyResultInputs = document.querySelectorAll('#keyResultsContainer input');
     const keyResults = Array.from(keyResultInputs)
-        .map(input => input.value.trim())
-        .filter(text => text)
+        .map(input => input.value.trim()).filter(text => text)
         .map(text => ({ text, completed: false }));
 
-    const goal = {
-        id: 'goal_' + Date.now(),
-        title,
-        description: document.getElementById('goalDesc').value,
-        period: document.getElementById('goalPeriod').value,
-        deadline: document.getElementById('goalDeadline').value,
-        department: document.getElementById('goalDepartment').value || 'work',
-        keyResults,
-        createdAt: new Date().toISOString()
+    const goalData = {
+        title, description: document.getElementById('goalDesc').value,
+        timeframe: document.getElementById('goalPeriod').value,
+        dueDate: document.getElementById('goalDeadline').value,
+        department: document.getElementById('goalDepartment').value || 'work'
     };
 
-    state.goals.push(goal);
-    saveStateAndSync();
-
-    // Log per KPI
-    logAttivita('obiettivo_creato', 'obiettivi', goal.id, {
-        titolo: title,
-        periodo: goal.period,
-        keyResults: keyResults.length
-    });
-
-    // Clear form
     document.getElementById('goalTitle').value = '';
     document.getElementById('goalDesc').value = '';
     document.getElementById('goalDeadline').value = '';
     document.getElementById('keyResultsContainer').innerHTML = '<input type="text" class="form-input mb-1" placeholder="Key Result 1">';
-
     closeModal('addGoalModal');
-    renderGoalsPage();
-    updateDepartmentStats();
-    addXP(10);
+
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbGoal = await saveGoalToDB(goalData);
+        if (dbGoal) {
+            state.goals.push({ ...goalData, id: dbGoal.id, _supabaseId: dbGoal.id, period: goalData.timeframe, deadline: goalData.dueDate, keyResults, createdAt: dbGoal.created_at });
+        } else {
+            state.goals.push({ ...goalData, id: 'goal_' + Date.now(), period: goalData.timeframe, deadline: goalData.dueDate, keyResults, createdAt: new Date().toISOString() });
+            saveStateAndSync();
+        }
+    } else {
+        state.goals.push({ ...goalData, id: 'goal_' + Date.now(), period: goalData.timeframe, deadline: goalData.dueDate, keyResults, createdAt: new Date().toISOString() });
+        saveStateAndSync();
+    }
+
+    logAttivita('obiettivo_creato', 'obiettivi', null, { titolo: title, periodo: goalData.timeframe, keyResults: keyResults.length });
+    renderGoalsPage(); updateDepartmentStats(); addXP(10);
     showToast('Obiettivo creato! +10 XP', 'success');
 }
 
@@ -12558,38 +12963,41 @@ function quickCapture() {
     checkBadges();
 }
 
-function saveNote() {
+async function saveNote() {
     const title = document.getElementById('noteTitle').value.trim();
     const content = document.getElementById('noteContent').value.trim();
 
-    if (!content) {
-        showToast('Scrivi qualcosa', 'error');
-        return;
-    }
+    if (!content) { showToast('Scrivi qualcosa', 'error'); return; }
 
     const tagsStr = document.getElementById('noteTags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
 
-    const note = {
-        id: 'note_' + Date.now(),
-        title: title || 'Senza titolo',
-        content,
-        tags,
-        department: document.getElementById('noteDepartment').value || 'work',
-        createdAt: new Date().toISOString()
+    const noteData = {
+        title: title || 'Senza titolo', content, tags,
+        department: document.getElementById('noteDepartment').value || 'work'
     };
-
-    state.notes.push(note);
-    state.stats.notesCreated++;
-    saveStateAndSync();
 
     document.getElementById('noteTitle').value = '';
     document.getElementById('noteContent').value = '';
     document.getElementById('noteTags').value = '';
-    
     closeModal('addNoteModal');
-    renderNotesList();
-    addXP(5);
+
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbNote = await saveNoteToDB(noteData);
+        if (dbNote) {
+            state.notes.push({ ...noteData, id: dbNote.id, _supabaseId: dbNote.id, createdAt: dbNote.created_at });
+        } else {
+            state.notes.push({ ...noteData, id: 'note_' + Date.now(), createdAt: new Date().toISOString() });
+            saveStateAndSync();
+        }
+    } else {
+        state.notes.push({ ...noteData, id: 'note_' + Date.now(), createdAt: new Date().toISOString() });
+        saveStateAndSync();
+    }
+
+    state.stats.notesCreated++;
+    renderNotesList(); addXP(5);
     showToast('Nota creata! +5 XP', 'success');
     checkBadges();
 }
@@ -15728,108 +16136,100 @@ ${tx.department === 'work' ? '🎭 Area: Lavoro' : '👤 Area: Personale'}
 }
 
 // Elimina transazione
-function deleteTransaction(txId) {
-    const index = (state.transactions || []).findIndex(t => t.id === txId);
-    if (index === -1) return;
+async function deleteTransaction(txId) {
+    const tx = (state.transactions || []).find(t => t.id === txId);
+    if (!tx) return;
 
-    // Salva per undo
-    const txBackup = { ...state.transactions[index] };
-
-    state.transactions.splice(index, 1);
+    const txBackup = { ...tx };
+    state.transactions = state.transactions.filter(t => t.id !== txId);
     state.stats.transactionsCount = Math.max(0, (state.stats.transactionsCount || 1) - 1);
-    markItemDeleted('transactions', txId);
-    saveStateAndSync('transactions');
-    renderFinancePage();
 
-    // Registra azione per undo
-    undoSystem.register({
-        type: 'deleteTransaction',
-        data: txBackup,
-        message: '🗑️ Transazione eliminata'
-    });
+    // Delete from Supabase
+    const sb = getSupabase();
+    if (sb && currentUser && tx._supabaseId) {
+        deleteTransactionFromDB(tx._supabaseId).catch(err => console.warn('Error deleting tx:', err));
+    } else {
+        markItemDeleted('transactions', txId);
+        saveStateAndSync('transactions');
+    }
+
+    renderFinancePage();
+    undoSystem.register({ type: 'deleteTransaction', data: txBackup, message: '🗑️ Transazione eliminata' });
 }
 
-function saveExpense() {
+async function saveExpense() {
     const amount = parseFloat(document.getElementById('expenseAmount').value);
-    if (!amount || amount <= 0) {
-        showToast('Inserisci un importo valido', 'error');
-        return;
-    }
-    
-    const transaction = {
-        id: 'tx_' + Date.now(),
-        type: 'expense',
-        amount: amount,
+    if (!amount || amount <= 0) { showToast('Inserisci un importo valido', 'error'); return; }
+
+    const txData = {
+        type: 'expense', amount: amount,
         description: document.getElementById('expenseDesc').value,
         category: document.getElementById('expenseCategory').value,
         date: document.getElementById('expenseDate').value || state.today.date,
         method: document.getElementById('expenseMethod').value,
         recurring: document.getElementById('expenseRecurring').classList.contains('active'),
-        department: document.getElementById('expenseDepartment').value || 'personal',
-        createdAt: new Date().toISOString()
+        department: document.getElementById('expenseDepartment').value || 'personal'
     };
-    
-    state.transactions.push(transaction);
-    state.stats.transactionsCount++;
-    saveStateAndSync('transactions', transaction.id);
-
-    // Log per KPI
-    logAttivita('spesa_registrata', 'finanze', transaction.id, {
-        importo: amount,
-        categoria: transaction.category,
-        metodo: transaction.method
-    });
 
     document.getElementById('expenseAmount').value = '';
     document.getElementById('expenseDesc').value = '';
-
     closeModal('addExpenseModal');
-    renderFinancePage();
-    renderHomePage();
-    addXP(3);
-    showToast('Spesa registrata! +3 XP', 'success');
-    checkBadges();
 
-    // Check budget alerts
-    checkBudgetAlerts();
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbTx = await saveTransactionToDB(txData);
+        if (dbTx) {
+            state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+        } else {
+            state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+            saveStateAndSync('transactions');
+        }
+    } else {
+        state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+        saveStateAndSync('transactions');
+    }
+
+    state.stats.transactionsCount++;
+    logAttivita('spesa_registrata', 'finanze', null, { importo: amount, categoria: txData.category });
+    renderFinancePage(); renderHomePage(); addXP(3);
+    showToast('Spesa registrata! +3 XP', 'success');
+    checkBadges(); checkBudgetAlerts();
 }
 
-function saveIncome() {
+async function saveIncome() {
     const amount = parseFloat(document.getElementById('incomeAmount').value);
-    if (!amount || amount <= 0) {
-        showToast('Inserisci un importo valido', 'error');
-        return;
-    }
-    
-    const transaction = {
-        id: 'tx_' + Date.now(),
-        type: 'income',
-        amount: amount,
+    if (!amount || amount <= 0) { showToast('Inserisci un importo valido', 'error'); return; }
+
+    const txData = {
+        type: 'income', amount: amount,
         description: document.getElementById('incomeDesc').value,
         category: document.getElementById('incomeCategory').value,
         date: document.getElementById('incomeDate').value || state.today.date,
         method: 'transfer',
-        department: document.getElementById('incomeDepartment').value || 'personal',
-        createdAt: new Date().toISOString()
+        department: document.getElementById('incomeDepartment').value || 'personal'
     };
-    
-    state.transactions.push(transaction);
-    state.stats.transactionsCount++;
-    saveStateAndSync('transactions', transaction.id);
-
-    // Log per KPI
-    logAttivita('entrata_registrata', 'finanze', transaction.id, {
-        importo: amount,
-        categoria: transaction.category
-    });
 
     document.getElementById('incomeAmount').value = '';
     document.getElementById('incomeDesc').value = '';
-
     closeModal('addIncomeModal');
-    renderFinancePage();
-    renderHomePage();
-    addXP(3);
+
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbTx = await saveTransactionToDB(txData);
+        if (dbTx) {
+            state.transactions.push({ ...txData, id: dbTx.id, _supabaseId: dbTx.id, createdAt: dbTx.created_at });
+        } else {
+            state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+            saveStateAndSync('transactions');
+        }
+    } else {
+        state.transactions.push({ ...txData, id: 'tx_' + Date.now(), createdAt: new Date().toISOString() });
+        saveStateAndSync('transactions');
+    }
+
+    state.stats.transactionsCount++;
+    logAttivita('entrata_registrata', 'finanze', null, { importo: amount, categoria: txData.category });
+    renderFinancePage(); renderHomePage(); addXP(3);
     showToast('Entrata registrata! +3 XP', 'success');
 }
 
@@ -16210,36 +16610,41 @@ function updateBookStats() {
     document.getElementById('readingGoalBar').style.width = goalPercent + '%';
 }
 
-function saveBook() {
+async function saveBook() {
     const title = document.getElementById('bookTitle').value.trim();
-    if (!title) {
-        showToast('Inserisci un titolo', 'error');
-        return;
-    }
+    if (!title) { showToast('Inserisci un titolo', 'error'); return; }
 
-    const book = {
-        id: 'book_' + Date.now(),
+    const bookData = {
         title: title,
         author: document.getElementById('bookAuthor').value.trim(),
-        totalPages: parseInt(document.getElementById('bookPages').value) || 300,
+        pagesTotal: parseInt(document.getElementById('bookPages').value) || 300,
         pagesRead: parseInt(document.getElementById('bookPagesRead').value) || 0,
-        completed: false,
-        xpEarned: 0,
-        createdAt: new Date().toISOString()
+        status: 'to_read'
     };
-
-    if (!state.books) state.books = [];
-    state.books.push(book);
-    saveStateAndSync();
 
     document.getElementById('bookTitle').value = '';
     document.getElementById('bookAuthor').value = '';
     document.getElementById('bookPages').value = '300';
     document.getElementById('bookPagesRead').value = '0';
-
     closeModal('addBookModal');
-    renderBooksPage();
-    addXP(5);
+
+    if (!state.books) state.books = [];
+
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        const dbBook = await saveBookToDB(bookData);
+        if (dbBook) {
+            state.books.push({ ...bookData, id: dbBook.id, _supabaseId: dbBook.id, totalPages: bookData.pagesTotal, completed: false, xpEarned: 0, createdAt: dbBook.created_at });
+        } else {
+            state.books.push({ ...bookData, id: 'book_' + Date.now(), totalPages: bookData.pagesTotal, completed: false, xpEarned: 0, createdAt: new Date().toISOString() });
+            saveStateAndSync();
+        }
+    } else {
+        state.books.push({ ...bookData, id: 'book_' + Date.now(), totalPages: bookData.pagesTotal, completed: false, xpEarned: 0, createdAt: new Date().toISOString() });
+        saveStateAndSync();
+    }
+
+    renderBooksPage(); addXP(5);
     showToast('Libro aggiunto! +5 XP', 'success');
 }
 
