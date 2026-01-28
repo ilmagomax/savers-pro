@@ -4419,12 +4419,12 @@ async function loadHabitsFromDB() {
                 return l.completed_at.split('T')[0];
             }).filter(d => d);
 
-            // Sanitize icon - ensure it's a string emoji, not an object
+            // Sanitize icon - ensure it's a valid emoji string
             let icon = h.icon;
-            if (typeof icon === 'object' && icon !== null) {
+            // Handle object, null, empty, or invalid icon values
+            if (!icon || typeof icon === 'object' || icon === '{}' || icon === 'null' || icon.trim() === '') {
                 icon = '✅';
             }
-            icon = icon || '✅';
 
             return {
                 id: h.id,
@@ -13208,10 +13208,11 @@ function renderTodayHabits() {
         }
         habitName = habitName || 'Abitudine';
 
-        // Protezione: estrai l'icona correttamente anche se è un oggetto
+        // Protezione: estrai l'icona correttamente
         let habitIcon = habit.icon;
-        if (typeof habitIcon === 'object' && habitIcon !== null) {
-            habitIcon = '✨'; // fallback se è un oggetto
+        // Handle object, null, empty, or invalid icon values like '{}'
+        if (!habitIcon || typeof habitIcon === 'object' || habitIcon === '{}' || habitIcon === 'null' || habitIcon.trim() === '') {
+            habitIcon = '✨'; // fallback
         }
         habitIcon = habitIcon || '✨';
 
@@ -13224,8 +13225,10 @@ function renderTodayHabits() {
                         <div class="habit-streak">🔥 ${habit.streak || 0} giorni ${hasSchedule}</div>
                     </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <button class="btn btn-sm" style="padding:4px 8px;font-size:12px;" onclick="event.stopPropagation();scheduleHabit('${habit.id}')" title="Schedula in calendario">📅</button>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <button class="btn btn-sm" style="padding:4px 6px;font-size:11px;" onclick="event.stopPropagation();openEditHabitModal('${habit.id}')" title="Modifica">✏️</button>
+                    <button class="btn btn-sm" style="padding:4px 6px;font-size:11px;" onclick="event.stopPropagation();deleteHabit('${habit.id}')" title="Elimina">🗑️</button>
+                    <button class="btn btn-sm" style="padding:4px 6px;font-size:11px;" onclick="event.stopPropagation();scheduleHabit('${habit.id}')" title="Schedula">📅</button>
                     <div class="habit-check ${completedToday ? 'completed' : ''}" onclick="toggleHabit('${habit.id}')">
                         ${completedToday ? '✓' : ''}
                     </div>
@@ -13538,6 +13541,108 @@ async function saveHabit() {
     updateDepartmentStats();
     addXP(5);
     showToast('Abitudine creata! +5 XP', 'success');
+}
+
+// Edit habit modal
+let editingHabitId = null;
+
+function openEditHabitModal(habitId) {
+    const habit = state.habits.find(h => h.id === habitId);
+    if (!habit) return;
+
+    editingHabitId = habitId;
+
+    // Populate modal with habit data
+    document.getElementById('habitName').value = habit.name || '';
+    document.getElementById('habitFrequency').value = habit.frequency || 'daily';
+    document.getElementById('habitDepartment').value = habit.department || 'personal';
+    selectedHabitIcon = habit.icon || '🧘';
+    document.getElementById('habitIcon').value = selectedHabitIcon;
+
+    // Update icon selection UI
+    document.querySelectorAll('.habit-icon').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.trim() === selectedHabitIcon) {
+            btn.classList.add('active');
+        }
+    });
+
+    openModal('addHabitModal');
+
+    // Change save button to update mode
+    const saveBtn = document.querySelector('#addHabitModal .btn-primary');
+    if (saveBtn) {
+        saveBtn.textContent = '💾 Aggiorna';
+        saveBtn.onclick = () => updateHabit();
+    }
+}
+
+async function updateHabit() {
+    if (!editingHabitId) {
+        saveHabit(); // Fallback to create
+        return;
+    }
+
+    const name = document.getElementById('habitName').value.trim();
+    if (!name) {
+        showToast('Inserisci un nome', 'error');
+        return;
+    }
+
+    const habitData = {
+        name,
+        icon: selectedHabitIcon,
+        frequency: document.getElementById('habitFrequency').value,
+        department: document.getElementById('habitDepartment').value || 'personal'
+    };
+
+    // Update in Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        await updateHabitInDB(editingHabitId, habitData);
+    }
+
+    // Update local state
+    const habit = state.habits.find(h => h.id === editingHabitId);
+    if (habit) {
+        habit.name = habitData.name;
+        habit.icon = habitData.icon;
+        habit.frequency = habitData.frequency;
+        habit.department = habitData.department;
+    }
+
+    // Reset and close
+    editingHabitId = null;
+    document.getElementById('habitName').value = '';
+    closeModal('addHabitModal');
+
+    // Reset save button
+    const saveBtn = document.querySelector('#addHabitModal .btn-primary');
+    if (saveBtn) {
+        saveBtn.textContent = '💾 Salva';
+        saveBtn.onclick = () => saveHabit();
+    }
+
+    renderHabitsPage();
+    renderRoutinePage();
+    showToast('Abitudine aggiornata!', 'success');
+}
+
+async function deleteHabit(habitId) {
+    if (!confirm('Eliminare questa abitudine?')) return;
+
+    // Delete from Supabase
+    const sb = getSupabase();
+    if (sb && currentUser) {
+        await deleteHabitFromDB(habitId);
+    }
+
+    // Remove from local state
+    state.habits = state.habits.filter(h => h.id !== habitId);
+
+    renderHabitsPage();
+    renderRoutinePage();
+    showToast('Abitudine eliminata', 'info');
 }
 
 // ============================================
@@ -14790,10 +14895,11 @@ function renderKanbanTask(task) {
 }
 
 function renderMatrix() {
-    const q1 = state.tasks.filter(t => !t.completed && t.quadrant === '1');
-    const q2 = state.tasks.filter(t => !t.completed && t.quadrant === '2');
-    const q3 = state.tasks.filter(t => !t.completed && t.quadrant === '3');
-    const q4 = state.tasks.filter(t => !t.completed && t.quadrant === '4');
+    // Usa == per confronto loose (gestisce sia '1' che 1)
+    const q1 = state.tasks.filter(t => !t.completed && t.quadrant == 1);
+    const q2 = state.tasks.filter(t => !t.completed && t.quadrant == 2);
+    const q3 = state.tasks.filter(t => !t.completed && t.quadrant == 3);
+    const q4 = state.tasks.filter(t => !t.completed && t.quadrant == 4);
 
     const m1 = document.getElementById('matrixQ1');
     const m2 = document.getElementById('matrixQ2');
