@@ -1,6 +1,37 @@
 # SAVERS PRO - Context File per Claude Code
 > Aggiornato: 2026-01-28 - Login Funzionante!
 
+## ⚠️ AZIONE RICHIESTA - FIX RLS RECURSION
+
+Prima di continuare, esegui questo SQL in **Supabase Dashboard > SQL Editor**:
+
+```sql
+-- FIX RECURSION - RLS POLICIES
+DROP POLICY IF EXISTS "Users can view profiles" ON profiles;
+DROP POLICY IF EXISTS "Users can view profiles in same org" ON profiles;
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can create own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+
+-- Policy SEMPLICI (senza ricorsione)
+CREATE POLICY "profiles_insert_own"
+ON profiles FOR INSERT TO authenticated
+WITH CHECK (id = auth.uid());
+
+CREATE POLICY "profiles_select_own"
+ON profiles FOR SELECT TO authenticated
+USING (id = auth.uid());
+
+CREATE POLICY "profiles_update_own"
+ON profiles FOR UPDATE TO authenticated
+USING (id = auth.uid());
+```
+
+Dopo l'esecuzione, fai logout e login di nuovo per testare.
+
+---
+
 ## STATO PROGETTO
 
 ### ✅ Completato
@@ -12,6 +43,9 @@
 - [x] Google OAuth configurato (Test mode, email aggiunto come tester)
 - [x] **LOGIN FUNZIONANTE** - Auth Supabase con Google OAuth
 - [x] Creazione automatica profilo utente
+
+### ⚠️ Problema Attuale
+- **RLS Infinite Recursion** - La policy "Users can view profiles" causa ricorsione infinita perché contiene una subquery sulla stessa tabella. Risolvi con lo script SQL sopra.
 
 ### 🔄 Da Fare (Prossime Fasi)
 - [ ] FASE 2: Migrazione Dati Personali (Habits, Tasks, Transactions, ecc.)

@@ -4335,6 +4335,8 @@ function setupSupabaseAuth() {
 
         if (event === 'SIGNED_IN' && session) {
             currentUser = session.user;
+            isLoggedIn = true;
+            isGoogleSignedIn = true;
             console.log('✅ User signed in:', currentUser.email);
 
             // Salva token Google per Calendar API
@@ -4351,10 +4353,15 @@ function setupSupabaseAuth() {
             // Mostra app
             showApp();
 
+            // Aggiorna UI (mostra logout button, etc.)
+            updateGoogleConnectionUI();
+
         } else if (event === 'SIGNED_OUT') {
             currentUser = null;
             userProfile = null;
             userOrganization = null;
+            isLoggedIn = false;
+            isGoogleSignedIn = false;
             showLoginScreen();
 
         } else if (event === 'TOKEN_REFRESHED' && session) {
@@ -4371,10 +4378,10 @@ async function ensureUserProfile() {
     if (!currentUser || !sb) return;
 
     try {
-        // Cerca profilo esistente
+        // Cerca profilo esistente (usa organization_id per la relazione)
         let { data: profile, error } = await sb
             .from('profiles')
-            .select('*, organization:organizations(*)')
+            .select('*, organization:organizations!profiles_organization_id_fkey(*)')
             .eq('id', currentUser.id)
             .single();
 
@@ -4407,7 +4414,7 @@ async function ensureUserProfile() {
                     avatar_url: currentUser.user_metadata?.avatar_url,
                     org_role: 'owner'
                 })
-                .select('*, organization:organizations(*)')
+                .select('*, organization:organizations!profiles_organization_id_fkey(*)')
                 .single();
 
             if (profileError) {
