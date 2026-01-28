@@ -18320,7 +18320,7 @@ async function acceptSingleModification(commentId) {
     showToast('Modifica accettata!', 'success');
 }
 
-// Animatore rifiuta modifica owner (singolo item) - torna all'importo originale
+// Animatore rifiuta modifica owner (singolo item) - torna a PENDENTE, deve ri-consegnare
 async function rejectSingleModification(commentId) {
     const sb = getSupabase();
     const now = new Date().toISOString();
@@ -18334,10 +18334,12 @@ async function rejectSingleModification(commentId) {
             if (c.originalAgencyFee) {
                 c.agencyFee = c.originalAgencyFee;
             }
+            // Reset completo - torna a PENDENTE (non consegnato)
             c.agencyFeeModifiedByOwner = false;
             c.agencyFeeAnimatorAccepted = false;
-            // Torna a pending_owner_confirmation
-            c.agencyFeeDelivered = true;
+            c.agencyFeeDelivered = false;  // <-- Torna a pendente!
+            c.agencyFeeDeliveredAt = null;
+            c.agencyFeeDeliveredBy = null;
 
             if (sb && currentUser) {
                 try {
@@ -18346,7 +18348,10 @@ async function rejectSingleModification(commentId) {
                         .update({
                             agency_fee: c.agencyFee,
                             agency_fee_modified_by_owner: false,
-                            agency_fee_animator_accepted: false
+                            agency_fee_animator_accepted: false,
+                            agency_fee_delivered: false,
+                            agency_fee_delivered_at: null,
+                            agency_fee_delivered_by: null
                         })
                         .eq('id', commentId);
                 } catch (err) {
@@ -18359,7 +18364,7 @@ async function rejectSingleModification(commentId) {
 
     saveStateAndSync();
     openAgencyFeeDetail();
-    showToast('Modifica rifiutata. Importo ripristinato.', 'warning');
+    showToast('Modifica rifiutata. Dovrai segnare nuovamente come consegnato.', 'warning');
 }
 
 // Animatore accetta tutte le modifiche owner
@@ -18410,7 +18415,7 @@ async function acceptOwnerModification(yearMonth) {
     showToast(`${count} modifiche accettate!`, 'success');
 }
 
-// Animatore rifiuta tutte le modifiche owner
+// Animatore rifiuta tutte le modifiche owner - torna a PENDENTE, deve ri-consegnare
 async function rejectOwnerModification(yearMonth) {
     const sb = getSupabase();
     const myEmail = state.profile?.email?.toLowerCase();
@@ -18430,8 +18435,12 @@ async function rejectOwnerModification(yearMonth) {
                 if (c.originalAgencyFee) {
                     c.agencyFee = c.originalAgencyFee;
                 }
+                // Reset completo - torna a PENDENTE
                 c.agencyFeeModifiedByOwner = false;
                 c.agencyFeeAnimatorAccepted = false;
+                c.agencyFeeDelivered = false;  // <-- Torna a pendente!
+                c.agencyFeeDeliveredAt = null;
+                c.agencyFeeDeliveredBy = null;
                 count++;
 
                 if (sb && currentUser && c.id) {
@@ -18441,7 +18450,10 @@ async function rejectOwnerModification(yearMonth) {
                             .update({
                                 agency_fee: c.agencyFee,
                                 agency_fee_modified_by_owner: false,
-                                agency_fee_animator_accepted: false
+                                agency_fee_animator_accepted: false,
+                                agency_fee_delivered: false,
+                                agency_fee_delivered_at: null,
+                                agency_fee_delivered_by: null
                             })
                             .eq('id', c.id);
                     } catch (err) {
@@ -18455,7 +18467,7 @@ async function rejectOwnerModification(yearMonth) {
     saveStateAndSync();
     closeModal('dynamicModal');
     renderAgencyFeeWallet();
-    showToast(`${count} modifiche rifiutate. Importi ripristinati.`, 'warning');
+    showToast(`${count} modifiche rifiutate. Dovrai segnare nuovamente come consegnato.`, 'warning');
 }
 
 // Renderizza dashboard eventi nella pagina Finance
