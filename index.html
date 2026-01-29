@@ -24070,7 +24070,7 @@ function loadCalendarsForInvite() {
         <label style="display:flex; align-items:center; gap:8px; padding:8px; cursor:pointer; border-radius:6px; border:1px solid var(--border-color); margin-bottom:6px;"
                onmouseover="this.style.background='var(--bg-tertiary)'; this.style.borderColor='var(--accent)'"
                onmouseout="this.style.background='transparent'; this.style.borderColor='var(--border-color)'">
-            <input type="checkbox" class="invite-calendar-checkbox" value="${cal.id}" data-name="${cal.summary || cal.id}" checked>
+            <input type="checkbox" class="invite-calendar-checkbox" value="${cal.id}" data-name="${cal.summary || cal.id}">
             <span style="width:12px; height:12px; border-radius:50%; background:${cal.backgroundColor || '#4285f4'}; flex-shrink:0;"></span>
             <span style="font-size:0.9rem; flex:1;">${cal.summary || cal.id}</span>
         </label>
