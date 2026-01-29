@@ -1043,6 +1043,35 @@
             </div>
 
             <!-- ============================================
+                 LA MIA AGENZIA (per membri non-owner/admin)
+                 ============================================ -->
+            <div class="card" id="myAgencyMemberCard" style="display:none;">
+                <div class="card-header" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; border-radius:12px 12px 0 0; margin:-1px -1px 0 -1px; padding:16px;">
+                    <div class="card-title" style="color:white;"><span class="card-title-icon">🎭</span> La Mia Agenzia</div>
+                </div>
+                <div style="padding:16px;">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                        <div style="width:48px; height:48px; background:var(--accent); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">🏢</div>
+                        <div>
+                            <div style="font-weight:600; font-size:1.1rem;" id="myAgencyName">-</div>
+                            <div style="font-size:0.85rem; color:var(--text-secondary);" id="myAgencyRole">Animatore</div>
+                        </div>
+                    </div>
+
+                    <!-- Calendari Assegnati -->
+                    <div style="margin-top:12px;">
+                        <div style="font-weight:500; margin-bottom:8px; font-size:0.9rem;">📅 Calendari Assegnati</div>
+                        <div id="myAssignedCalendars" style="background:var(--bg-secondary); border-radius:8px; padding:12px;">
+                            <div class="text-muted text-sm">Nessun calendario assegnato</div>
+                        </div>
+                        <small class="text-muted" style="display:block; margin-top:6px;">
+                            Se non vedi i calendari, chiedi al tuo responsabile di condividerli con te su Google Calendar
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================
                  GESTIONE AGENZIA (solo per owner/admin)
                  ============================================ -->
             <div class="card" id="agencyManagementCard" style="display:none;">
@@ -4239,6 +4268,20 @@
                         <div class="text-muted text-sm">Caricamento calendari...</div>
                     </div>
                     <small class="text-muted">Seleziona i calendari a cui l'animatore avrà accesso</small>
+                </div>
+
+                <!-- Avviso importante -->
+                <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:12px; margin-top:12px;">
+                    <div style="font-weight:600; color:#92400e; margin-bottom:4px;">⚠️ Importante</div>
+                    <div style="font-size:0.85rem; color:#78350f;">
+                        Dopo l'invito, <strong>condividi i calendari selezionati</strong> con l'email dell'animatore su Google Calendar:
+                        <ol style="margin:8px 0 0 0; padding-left:20px;">
+                            <li>Apri Google Calendar</li>
+                            <li>Clicca sui 3 puntini del calendario</li>
+                            <li>Impostazioni e condivisione</li>
+                            <li>Aggiungi l'email dell'animatore</li>
+                        </ol>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -23930,10 +23973,26 @@ async function loadAgencyData() {
     });
 
     const agencyCard = document.getElementById('agencyManagementCard');
+    const memberCard = document.getElementById('myAgencyMemberCard');
 
-    // Mostra card solo per owner/admin
+    // Mostra card gestione solo per owner/admin
     if (agencyCard) {
         agencyCard.style.display = isOwnerOrAdmin ? 'block' : 'none';
+    }
+
+    // Mostra card membro per animatori
+    if (memberCard) {
+        memberCard.style.display = (!isOwnerOrAdmin && state.organization) ? 'block' : 'none';
+
+        // Popola info agenzia per l'animatore
+        if (!isOwnerOrAdmin && state.organization) {
+            document.getElementById('myAgencyName').textContent = state.organization.name || 'Agenzia';
+            const roleLabels = { owner: '👑 Proprietario', admin: '⚙️ Admin', animator: '🎭 Animatore', viewer: '👁️ Viewer' };
+            document.getElementById('myAgencyRole').textContent = roleLabels[state.profile?.org_role] || '🎭 Animatore';
+
+            // Carica calendari assegnati
+            loadMyAssignedCalendars();
+        }
     }
 
     if (!isOwnerOrAdmin) return;
@@ -23969,6 +24028,79 @@ async function loadAgencyData() {
 
     } catch (err) {
         console.error('Errore loadAgencyData:', err);
+    }
+}
+
+// Carica calendari assegnati all'animatore corrente
+async function loadMyAssignedCalendars() {
+    const container = document.getElementById('myAssignedCalendars');
+    if (!container) return;
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.id) {
+        container.innerHTML = '<div class="text-muted text-sm">Errore caricamento</div>';
+        return;
+    }
+
+    try {
+        // Cerca la mia membership
+        const { data: membership, error: membershipError } = await supabase
+            .from('agency_members')
+            .select('id, assigned_calendars')
+            .eq('user_id', state.profile.id)
+            .eq('status', 'active')
+            .single();
+
+        if (membershipError || !membership) {
+            container.innerHTML = '<div class="text-muted text-sm">Nessun calendario assegnato</div>';
+            return;
+        }
+
+        // Carica calendari assegnati dalla tabella agency_calendar_access
+        const { data: calendarAccess, error: accessError } = await supabase
+            .from('agency_calendar_access')
+            .select('*')
+            .eq('member_id', membership.id);
+
+        if (accessError) {
+            console.error('Errore caricamento calendari:', accessError);
+            container.innerHTML = '<div class="text-muted text-sm">Errore caricamento calendari</div>';
+            return;
+        }
+
+        if (!calendarAccess || calendarAccess.length === 0) {
+            // Prova a usare assigned_calendars dal membro
+            const assignedCals = membership.assigned_calendars || [];
+            if (assignedCals.length === 0) {
+                container.innerHTML = '<div class="text-muted text-sm">Nessun calendario assegnato</div>';
+                return;
+            }
+
+            container.innerHTML = assignedCals.map(cal => `
+                <div style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg-tertiary); border-radius:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#4285f4;"></span>
+                    <span style="font-size:0.9rem;">${cal.name || cal.calendar_id || 'Calendario'}</span>
+                </div>
+            `).join('');
+            return;
+        }
+
+        // Mostra calendari dalla tabella agency_calendar_access
+        container.innerHTML = calendarAccess.map(cal => `
+            <div style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg-tertiary); border-radius:6px; margin-bottom:4px;">
+                <span style="width:10px; height:10px; border-radius:50%; background:${cal.calendar_color || '#4285f4'};"></span>
+                <span style="font-size:0.9rem; flex:1;">${cal.calendar_name || 'Calendario'}</span>
+                <div style="display:flex; gap:4px;">
+                    ${cal.can_view ? '<span title="Può visualizzare" style="font-size:0.7rem;">👁️</span>' : ''}
+                    ${cal.can_comment ? '<span title="Può commentare" style="font-size:0.7rem;">💬</span>' : ''}
+                    ${cal.can_add_finances ? '<span title="Può aggiungere dati finanziari" style="font-size:0.7rem;">💰</span>' : ''}
+                </div>
+            </div>
+        `).join('');
+
+    } catch (err) {
+        console.error('Errore loadMyAssignedCalendars:', err);
+        container.innerHTML = '<div class="text-muted text-sm">Errore caricamento</div>';
     }
 }
 
