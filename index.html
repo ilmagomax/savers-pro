@@ -24043,20 +24043,36 @@ function loadCalendarsForInvite() {
     const container = document.getElementById('inviteCalendarsList');
     if (!container) return;
 
-    // Usa i calendari Google già caricati
-    const calendars = state.googleCalendars || [];
+    // Usa i calendari Google già caricati (variabile globale userCalendars)
+    const calendars = userCalendars || [];
+
+    console.log('📅 loadCalendarsForInvite - calendari disponibili:', calendars.length);
 
     if (calendars.length === 0) {
-        container.innerHTML = '<div class="text-muted text-sm">Nessun calendario disponibile. Connetti Google Calendar.</div>';
+        container.innerHTML = `
+            <div class="text-muted text-sm" style="padding:12px; text-align:center;">
+                <div>📅 Nessun calendario disponibile</div>
+                <div style="margin-top:8px;">
+                    ${isGoogleSignedIn ? 'Caricamento in corso...' : '<a href="#" onclick="loginWithGoogle(); return false;">Connetti Google Calendar</a>'}
+                </div>
+            </div>
+        `;
+        // Se connesso ma calendari vuoti, prova a ricaricare
+        if (isGoogleSignedIn && typeof loadUserCalendars === 'function') {
+            loadUserCalendars().then(() => {
+                if (userCalendars.length > 0) loadCalendarsForInvite();
+            });
+        }
         return;
     }
 
     container.innerHTML = calendars.map(cal => `
-        <label style="display:flex; align-items:center; gap:8px; padding:6px; cursor:pointer; border-radius:4px;"
-               onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background='transparent'">
-            <input type="checkbox" class="invite-calendar-checkbox" value="${cal.id}" data-name="${cal.summary}">
-            <span style="width:12px; height:12px; border-radius:50%; background:${cal.backgroundColor || '#4285f4'};"></span>
-            <span style="font-size:0.9rem;">${cal.summary}</span>
+        <label style="display:flex; align-items:center; gap:8px; padding:8px; cursor:pointer; border-radius:6px; border:1px solid var(--border-color); margin-bottom:6px;"
+               onmouseover="this.style.background='var(--bg-tertiary)'; this.style.borderColor='var(--accent)'"
+               onmouseout="this.style.background='transparent'; this.style.borderColor='var(--border-color)'">
+            <input type="checkbox" class="invite-calendar-checkbox" value="${cal.id}" data-name="${cal.summary || cal.id}" checked>
+            <span style="width:12px; height:12px; border-radius:50%; background:${cal.backgroundColor || '#4285f4'}; flex-shrink:0;"></span>
+            <span style="font-size:0.9rem; flex:1;">${cal.summary || cal.id}</span>
         </label>
     `).join('');
 }
@@ -24232,12 +24248,12 @@ async function openEditAnimatorModal(memberId) {
         <div class="form-group">
             <label class="form-label">Calendari Assegnati (${calendars.length})</label>
             <div id="editCalendarsList" style="max-height:120px; overflow-y:auto; background:var(--bg-secondary); padding:12px; border-radius:8px;">
-                ${(state.googleCalendars || []).map(cal => {
+                ${(userCalendars || []).map(cal => {
                     const isAssigned = calendars.some(c => c.id === cal.id);
                     return `
                         <label style="display:flex; align-items:center; gap:8px; padding:4px; cursor:pointer;">
-                            <input type="checkbox" class="edit-calendar-checkbox" value="${cal.id}" data-name="${cal.summary}" ${isAssigned ? 'checked' : ''}>
-                            <span>${cal.summary}</span>
+                            <input type="checkbox" class="edit-calendar-checkbox" value="${cal.id}" data-name="${cal.summary || cal.id}" ${isAssigned ? 'checked' : ''}>
+                            <span>${cal.summary || cal.id}</span>
                         </label>
                     `;
                 }).join('')}
