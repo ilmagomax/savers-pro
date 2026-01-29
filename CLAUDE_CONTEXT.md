@@ -148,6 +148,7 @@ Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
 - `sql/09-agency-system.sql` - Schema base (tabelle, funzioni, trigger)
 - `sql/10-fix-agency-rls.sql` - Fix RLS policies (evita ricorsione infinita)
 - `sql/11-fix-accept-invite.sql` - Fix funzione accept_agency_invite (mapping ruoli)
+- `sql/13-context-switcher.sql` - Context switcher per switch workspace (DA ESEGUIRE)
 
 **Tabelle**:
 - `agency_members` - Membri dell'agenzia con ruoli e permessi granulari
@@ -190,6 +191,29 @@ Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
 - Sezione Bacheca Annunci (messaggio di benvenuto)
 - Sezione "I Miei Colleghi" con avatar e ruoli
 - Sezione "I Miei Calendari" assegnati
+
+### Context Switcher (NUOVO 2026-01-29)
+
+L'utente può avere SIA il suo workspace personale SIA appartenere a un'agenzia.
+Nel dropdown profilo (header) appare un selettore per switchare tra i workspace disponibili.
+
+**File SQL**: `sql/13-context-switcher.sql`
+- Aggiunge campo `current_context_org_id` in profiles
+- Funzione RPC `get_user_organizations(p_user_id)` - lista workspace accessibili
+- Funzione RPC `switch_organization_context(p_user_id, p_org_id)` - cambia contesto
+
+**Funzioni JS chiave**:
+- `loadUserWorkspaces()` - Carica lista workspace via RPC
+- `renderContextSwitcher()` - Renderizza dropdown nel profilo
+- `switchWorkspaceContext(orgId)` - Cambia contesto e ricarica dati
+- `refreshCurrentPageData()` - Ricarica dati dopo cambio contesto
+
+**Logica**:
+- Ogni utente ha il suo workspace personale (creato alla registrazione)
+- Può anche appartenere a una o più agenzie
+- `current_context_org_id` indica quale workspace è attivo
+- Se null, usa `organization_id` (default)
+- Al cambio contesto, i dati vengono filtrati per l'organizzazione selezionata
 
 **Problemi Noti da Risolvere**:
 - [x] ~~Animatore non vede colleghi~~ - FIXATO (bug era in `state.organization` stale)

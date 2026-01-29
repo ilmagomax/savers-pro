@@ -185,6 +185,13 @@
                                     <span style="font-size:0.7rem; padding:2px 8px; background:#10b981; color:white; border-radius:10px; display:none;" id="dropdownUserRole">Animatore</span>
                                 </div>
                             </div>
+                            <!-- Context Switcher - Workspace -->
+                            <div id="contextSwitcherSection" style="padding:12px 16px; border-bottom:1px solid var(--border-color); display:none;">
+                                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Workspace Attivo</div>
+                                <div id="contextSwitcherList" style="display:flex; flex-direction:column; gap:4px;">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
                             <div style="padding:8px 0;">
                                 <button onclick="openProfileModal(); closeProfileDropdown();" style="width:100%; padding:12px 16px; text-align:left; background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:10px; font-size:0.9rem; color:var(--text-primary);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">
                                     ⚙️ Impostazioni
@@ -5109,15 +5116,17 @@ async function ensureUserProfile() {
         }
 
         // Carica organization separatamente
+        // Usa current_context_org_id se disponibile, altrimenti organization_id
         let organization = null;
-        if (profile?.organization_id) {
+        const activeOrgId = profile?.current_context_org_id || profile?.organization_id;
+        if (activeOrgId) {
             const { data: org } = await sb
                 .from('organizations')
                 .select('*')
-                .eq('id', profile.organization_id)
+                .eq('id', activeOrgId)
                 .single();
             organization = org;
-            console.log('📡 Organization loaded:', org?.name);
+            console.log('📡 Organization loaded:', org?.name, '(context:', profile?.current_context_org_id ? 'custom' : 'default', ')');
         }
 
         if (error && error.code === 'PGRST116') {
@@ -11350,6 +11359,9 @@ function toggleProfileDropdown(event) {
 
         dropdown.style.display = 'block';
 
+        // Carica e renderizza context switcher (workspace disponibili)
+        renderContextSwitcher();
+
         // Chiudi al click fuori
         setTimeout(() => {
             document.addEventListener('click', closeProfileDropdownOnClickOutside);
@@ -11369,6 +11381,190 @@ function closeProfileDropdownOnClickOutside(event) {
     if (dropdown && container && !container.contains(event.target)) {
         closeProfileDropdown();
     }
+}
+
+// ============================================
+// CONTEXT SWITCHER - Switch tra Workspace
+// ============================================
+
+// Carica lista workspace accessibili dall'utente
+async function loadUserWorkspaces() {
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.id) return [];
+
+    try {
+        // Usa la funzione RPC per ottenere le organizzazioni accessibili
+        const { data, error } = await supabase.rpc('get_user_organizations', {
+            p_user_id: state.profile.id
+        });
+
+        if (error) {
+            console.error('Errore caricamento workspace:', error);
+            // Fallback: ritorna solo l'organizzazione corrente
+            return [{
+                org_id: state.organization?.id,
+                org_name: state.organization?.name || 'Il mio Workspace',
+                user_role: state.profile?.org_role || 'owner',
+                is_personal_workspace: true,
+                is_current: true
+            }];
+        }
+
+        console.log('📋 Workspace disponibili:', data);
+        return data || [];
+    } catch (err) {
+        console.error('Errore loadUserWorkspaces:', err);
+        return [];
+    }
+}
+
+// Renderizza la lista workspace nel dropdown
+async function renderContextSwitcher() {
+    const container = document.getElementById('contextSwitcherList');
+    const section = document.getElementById('contextSwitcherSection');
+    if (!container || !section) return;
+
+    const workspaces = await loadUserWorkspaces();
+
+    // Mostra sezione solo se ci sono almeno 2 workspace
+    if (workspaces.length < 2) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    const roleIcons = {
+        'owner': '👑',
+        'admin': '⚙️',
+        'animator': '🎭',
+        'viewer': '👁️',
+        'member': '👤'
+    };
+
+    container.innerHTML = workspaces.map(ws => {
+        const icon = ws.is_personal_workspace ? '🏠' : '🏢';
+        const roleIcon = roleIcons[ws.user_role] || '👤';
+        const isActive = ws.is_current;
+
+        return `
+            <button
+                onclick="switchWorkspaceContext('${ws.org_id}')"
+                style="
+                    width:100%;
+                    padding:10px 12px;
+                    text-align:left;
+                    background:${isActive ? 'var(--accent)' : 'var(--bg-secondary)'};
+                    border:${isActive ? '2px solid var(--accent)' : '1px solid var(--border-color)'};
+                    border-radius:8px;
+                    cursor:pointer;
+                    display:flex;
+                    align-items:center;
+                    gap:10px;
+                    color:${isActive ? 'white' : 'var(--text-primary)'};
+                    transition: all 0.2s ease;
+                "
+                onmouseover="if(!${isActive}) this.style.background='var(--bg-hover)'"
+                onmouseout="if(!${isActive}) this.style.background='var(--bg-secondary)'"
+            >
+                <span style="font-size:1.2rem;">${icon}</span>
+                <div style="flex:1; min-width:0;">
+                    <div style="font-weight:${isActive ? '600' : '500'}; font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${ws.org_name || 'Workspace'}
+                    </div>
+                    <div style="font-size:0.7rem; opacity:0.8;">
+                        ${roleIcon} ${ws.user_role === 'owner' ? 'Proprietario' : ws.user_role === 'admin' ? 'Admin' : ws.user_role === 'animator' ? 'Animatore' : 'Membro'}
+                    </div>
+                </div>
+                ${isActive ? '<span style="font-size:0.9rem;">✓</span>' : ''}
+            </button>
+        `;
+    }).join('');
+}
+
+// Cambia contesto workspace
+async function switchWorkspaceContext(orgId) {
+    if (!orgId) return;
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.id) return;
+
+    // Se è già il contesto corrente, non fare nulla
+    const currentContextId = state.profile.current_context_org_id || state.organization?.id;
+    if (orgId === currentContextId) {
+        closeProfileDropdown();
+        return;
+    }
+
+    try {
+        showToast('Cambio workspace...', 'info');
+
+        // Chiama funzione RPC per cambiare contesto
+        const { data, error } = await supabase.rpc('switch_organization_context', {
+            p_user_id: state.profile.id,
+            p_org_id: orgId
+        });
+
+        if (error) throw error;
+
+        if (data?.success) {
+            // Aggiorna stato locale
+            state.profile.current_context_org_id = orgId;
+
+            // Ricarica organizzazione
+            const { data: newOrg } = await supabase
+                .from('organizations')
+                .select('*')
+                .eq('id', orgId)
+                .single();
+
+            if (newOrg) {
+                state.organization = newOrg;
+            }
+
+            showToast(`Passato a: ${data.org_name}`, 'success');
+            closeProfileDropdown();
+
+            // Ricarica la pagina corrente per aggiornare i dati
+            const currentPage = state.currentPage || 'home';
+            await refreshCurrentPageData();
+
+        } else {
+            showToast(data?.error || 'Errore nel cambio workspace', 'error');
+        }
+
+    } catch (err) {
+        console.error('Errore switchWorkspaceContext:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Ricarica i dati della pagina corrente dopo il cambio contesto
+async function refreshCurrentPageData() {
+    const page = state.currentPage || 'home';
+
+    // Ricarica dati comuni
+    await ensureUserProfile();
+
+    // Ricarica dati specifici per pagina
+    switch(page) {
+        case 'home':
+            if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+            break;
+        case 'team':
+            if (typeof loadAgencyData === 'function') await loadAgencyData();
+            if (typeof renderTeamPage === 'function') await renderTeamPage();
+            break;
+        case 'money':
+            if (typeof loadTransactionsFromSupabase === 'function') await loadTransactionsFromSupabase();
+            break;
+        case 'task':
+            if (typeof loadTasksFromSupabase === 'function') await loadTasksFromSupabase();
+            break;
+    }
+
+    // Aggiorna header
+    if (typeof updateHeaderAvatar === 'function') updateHeaderAvatar();
 }
 
 // Logout utente
