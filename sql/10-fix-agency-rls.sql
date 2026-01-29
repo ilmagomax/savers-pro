@@ -3,12 +3,18 @@
 -- Il problema è la ricorsione infinita nelle policy
 -- ============================================
 
--- Rimuovi le policy problematiche
+-- Rimuovi le policy problematiche (vecchie)
 DROP POLICY IF EXISTS "Users can view own membership" ON agency_members;
 DROP POLICY IF EXISTS "Agency admins can view all members" ON agency_members;
 DROP POLICY IF EXISTS "Agency admins can invite members" ON agency_members;
 DROP POLICY IF EXISTS "Agency admins can update members" ON agency_members;
 DROP POLICY IF EXISTS "Agency owner can delete members" ON agency_members;
+
+-- Rimuovi anche le nuove policy se esistono (per permettere re-esecuzione)
+DROP POLICY IF EXISTS "View agency members" ON agency_members;
+DROP POLICY IF EXISTS "Insert agency members" ON agency_members;
+DROP POLICY IF EXISTS "Update agency members" ON agency_members;
+DROP POLICY IF EXISTS "Delete agency members" ON agency_members;
 
 -- Ricrea policy semplici senza ricorsione
 
@@ -59,12 +65,18 @@ USING (
     )
 );
 
--- 4. DELETE: Solo owner può eliminare
+-- 4. DELETE: Owner e admin possono eliminare
 CREATE POLICY "Delete agency members"
 ON agency_members FOR DELETE
 USING (
     agency_id IN (
         SELECT id FROM organizations WHERE owner_id = auth.uid()
+    )
+    OR
+    agency_id IN (
+        SELECT organization_id FROM profiles
+        WHERE id = auth.uid()
+        AND org_role IN ('owner', 'admin')
     )
 );
 
@@ -74,6 +86,9 @@ USING (
 
 DROP POLICY IF EXISTS "Users can view own calendar access" ON agency_calendar_access;
 DROP POLICY IF EXISTS "Agency admins can manage calendar access" ON agency_calendar_access;
+-- Rimuovi nuove policy se esistono
+DROP POLICY IF EXISTS "View calendar access" ON agency_calendar_access;
+DROP POLICY IF EXISTS "Manage calendar access" ON agency_calendar_access;
 
 CREATE POLICY "View calendar access"
 ON agency_calendar_access FOR SELECT
@@ -106,6 +121,9 @@ USING (
 -- ============================================
 
 DROP POLICY IF EXISTS "Agency admins can view invites log" ON agency_invites_log;
+-- Rimuovi nuove policy se esistono
+DROP POLICY IF EXISTS "View invites log" ON agency_invites_log;
+DROP POLICY IF EXISTS "Insert invites log" ON agency_invites_log;
 
 CREATE POLICY "View invites log"
 ON agency_invites_log FOR SELECT

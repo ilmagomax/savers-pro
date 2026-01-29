@@ -1099,7 +1099,7 @@
                 </div>
 
                 <!-- Calendari Assegnati -->
-                <div style="padding:16px;">
+                <div style="padding:16px; border-bottom:1px solid var(--border-color);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                         <div style="font-weight:600; font-size:0.95rem;">📅 I Miei Calendari</div>
                         <span class="badge" id="myCalendarsCount" style="background:#3b82f6; color:white;">0</span>
@@ -1112,6 +1112,20 @@
                     </div>
                     <div style="margin-top:12px; padding:10px; background:var(--bg-secondary); border-radius:8px; font-size:0.8rem; color:var(--text-secondary);">
                         💡 <strong>Suggerimento:</strong> I calendari vengono condivisi automaticamente con il tuo account Google. Controlla la sezione "Altri calendari" in Google Calendar.
+                    </div>
+                </div>
+
+                <!-- Documenti e Policy Agenzia -->
+                <div style="padding:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div style="font-weight:600; font-size:0.95rem;">📚 Manuali & Policy</div>
+                        <span class="badge" id="myDocumentsCount" style="background:#8b5cf6; color:white;">0</span>
+                    </div>
+                    <div id="myAgencyDocuments" style="display:flex; flex-direction:column; gap:8px;">
+                        <div style="text-align:center; color:var(--text-secondary); font-size:0.85rem; padding:16px;">
+                            <div style="font-size:1.5rem; margin-bottom:4px;">📖</div>
+                            Nessun documento disponibile
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1162,6 +1176,23 @@
                 <!-- Lista Animatori -->
                 <div id="agencyAnimatorsList" style="max-height:300px; overflow-y:auto;">
                     <!-- Popolato dinamicamente -->
+                </div>
+
+                <!-- Documenti e Policy (Owner/Admin) -->
+                <div style="padding:16px; border-top:1px solid var(--border-color);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div style="font-weight:600; font-size:0.95rem;">📚 Manuali & Policy</div>
+                        <button class="btn btn-sm btn-primary" onclick="openCreateDocumentModal()" style="font-size:0.8rem;">
+                            + Aggiungi
+                        </button>
+                    </div>
+                    <div id="ownerDocumentsList" style="max-height:200px; overflow-y:auto;">
+                        <div style="text-align:center; color:var(--text-secondary); font-size:0.85rem; padding:12px;">
+                            <div style="font-size:1.2rem; margin-bottom:4px;">📖</div>
+                            Nessun documento.<br>
+                            <span style="font-size:0.75rem;">Aggiungi manuali, policy o contratti per il tuo team.</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Inviti Pendenti -->
@@ -4269,44 +4300,120 @@
     </div>
 
     <!-- ============================================
-         MODAL: Crea Annuncio Bacheca
+         MODAL: Crea/Modifica Annuncio Bacheca
          ============================================ -->
     <div class="modal-overlay modal-center" id="createAnnouncementModal" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">
-        <div class="modal" style="max-width:450px;background:#fff;border-radius:16px;box-shadow:0 25px 50px rgba(0,0,0,0.25);">
-            <div class="modal-header" style="background:linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color:white;">
-                <div class="modal-title" style="color:white;">📢 Nuovo Annuncio</div>
-                <button class="modal-close" onclick="closeModal('createAnnouncementModal')" style="color:white;">✕</button>
+        <div class="modal" style="max-width:500px;background:#fff;border-radius:16px;box-shadow:0 25px 50px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto;">
+            <div class="modal-header" style="background:linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color:white; padding:16px 20px; border-radius:16px 16px 0 0;">
+                <div class="modal-title" id="announcementModalTitle" style="color:white; font-size:18px; font-weight:600;">📢 Nuovo Annuncio</div>
+                <button class="modal-close" onclick="closeAnnouncementModal()" style="color:white; background:rgba(255,255,255,0.2); border:none; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:18px;">✕</button>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Titolo *</label>
-                    <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100">
+            <div class="modal-body" style="padding:20px;">
+                <input type="hidden" id="editingAnnouncementId">
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">Titolo *</label>
+                    <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100" style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px;">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Messaggio *</label>
-                    <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="1000"></textarea>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">Messaggio *</label>
+                    <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="2000" style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px; resize:vertical;"></textarea>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Priorità</label>
-                    <select class="form-input form-select" id="announcementPriority">
-                        <option value="normal">Normale</option>
-                        <option value="low">Bassa</option>
-                        <option value="high">Alta - Importante</option>
-                        <option value="urgent">Urgente</option>
-                    </select>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">
+                        🔗 Link allegato (Google Drive, sito web, ecc.)
+                    </label>
+                    <input type="url" class="form-input" id="announcementLink" placeholder="https://drive.google.com/..." style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px;">
+                    <small style="color:#6b7280; font-size:12px; margin-top:4px; display:block;">Opzionale: aggiungi un link a documenti, video o risorse</small>
                 </div>
-                <div class="form-group">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                        <input type="checkbox" id="announcementPinned">
-                        <span>📌 Fissa in cima alla bacheca</span>
+
+                <div style="display:flex; gap:12px; margin-bottom:16px;">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">Priorità</label>
+                        <select class="form-input form-select" id="announcementPriority" style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px;">
+                            <option value="normal">🔵 Normale</option>
+                            <option value="low">⚪ Bassa</option>
+                            <option value="high">🟠 Alta</option>
+                            <option value="urgent">🔴 Urgente</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px; background:#f3f4f6; border-radius:8px;">
+                        <input type="checkbox" id="announcementPinned" style="width:18px; height:18px;">
+                        <span style="font-size:14px; color:#374151;">📌 Fissa in cima alla bacheca</span>
                     </label>
                 </div>
-                <div style="display:flex; gap:12px; margin-top:16px;">
-                    <button class="btn btn-secondary" onclick="closeModal('createAnnouncementModal')" style="flex:1;">
+
+                <div style="display:flex; gap:12px;">
+                    <button class="btn btn-secondary" onclick="closeAnnouncementModal()" style="flex:1; padding:12px; border-radius:8px; font-size:15px;">
                         Annulla
                     </button>
-                    <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1;">
+                    <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1; padding:12px; border-radius:8px; font-size:15px; background:linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color:white; border:none;">
                         📢 Pubblica
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         MODAL: Crea/Modifica Documento Agenzia
+         ============================================ -->
+    <div class="modal-overlay modal-center" id="createDocumentModal" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">
+        <div class="modal" style="max-width:500px;background:#fff;border-radius:16px;box-shadow:0 25px 50px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto;">
+            <div class="modal-header" style="background:linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color:white; padding:16px 20px; border-radius:16px 16px 0 0;">
+                <div class="modal-title" id="documentModalTitle" style="color:white; font-size:18px; font-weight:600;">📚 Nuovo Documento</div>
+                <button class="modal-close" onclick="closeDocumentModal()" style="color:white; background:rgba(255,255,255,0.2); border:none; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:18px;">✕</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <input type="hidden" id="editingDocumentId">
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">Titolo documento *</label>
+                    <input type="text" class="form-input" id="documentTitle" placeholder="es. Manuale operativo animatori" maxlength="100" style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px;">
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">Descrizione</label>
+                    <textarea class="form-input" id="documentDescription" rows="2" placeholder="Breve descrizione del documento..." maxlength="500" style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px; resize:vertical;"></textarea>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">
+                        🔗 Link documento (Google Drive) *
+                    </label>
+                    <input type="url" class="form-input" id="documentUrl" placeholder="https://drive.google.com/..." style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px;">
+                    <small style="color:#6b7280; font-size:12px; margin-top:4px; display:block;">Incolla il link di condivisione da Google Drive</small>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label" style="display:block; font-weight:600; color:#374151; margin-bottom:6px; font-size:14px;">Categoria</label>
+                    <select class="form-input form-select" id="documentCategory" style="width:100%; padding:12px; border:1px solid #d1d5db; border-radius:8px; font-size:15px;">
+                        <option value="manual">📖 Manuale</option>
+                        <option value="policy">📋 Policy / Regolamento</option>
+                        <option value="contract">📝 Contratto</option>
+                        <option value="training">🎓 Formazione</option>
+                        <option value="general">📁 Generale</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px; background:#fef3c7; border-radius:8px; border:1px solid #fbbf24;">
+                        <input type="checkbox" id="documentRequired" style="width:18px; height:18px;">
+                        <span style="font-size:14px; color:#92400e;">⚠️ Documento obbligatorio (tutti devono leggerlo)</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; gap:12px;">
+                    <button class="btn btn-secondary" onclick="closeDocumentModal()" style="flex:1; padding:12px; border-radius:8px; font-size:15px;">
+                        Annulla
+                    </button>
+                    <button class="btn btn-primary" onclick="saveDocument()" style="flex:1; padding:12px; border-radius:8px; font-size:15px; background:linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color:white; border:none;">
+                        📚 Salva
                     </button>
                 </div>
             </div>
@@ -24435,11 +24542,14 @@ async function loadMyAgencyFullData() {
 
         renderMyColleagues(colleagues || [], orgOwner);
 
-        // 3. Carica annunci (per ora placeholder - può essere esteso con una tabella dedicata)
+        // 3. Carica annunci bacheca
         renderMyAgencyAnnouncements();
 
         // 4. Carica calendari assegnati
         await loadMyAssignedCalendars(myMembership?.assigned_calendars);
+
+        // 5. Carica documenti e policy
+        await loadMyAgencyDocuments();
 
     } catch (err) {
         console.error('Errore loadMyAgencyFullData:', err);
@@ -24853,8 +24963,9 @@ function renderAgencyManagement(org) {
         }
     }
 
-    // Carica annunci bacheca
+    // Carica annunci bacheca e documenti
     loadOwnerAnnouncements();
+    loadOwnerDocuments();
 }
 
 // ============================================
@@ -24906,40 +25017,70 @@ async function loadOwnerAnnouncements() {
 
 // Renderizza singolo annuncio
 function renderAnnouncementItem(ann, isOwnerView = false) {
-    const priorityColors = {
-        'urgent': '#ef4444',
-        'high': '#f97316',
-        'normal': '#3b82f6',
-        'low': '#6b7280'
+    const priorityConfig = {
+        'urgent': { bg: '#fef2f2', border: '#fecaca', badge: '#dc2626', label: '🔴 Urgente', icon: '🚨' },
+        'high': { bg: '#fff7ed', border: '#fed7aa', badge: '#ea580c', label: '🟠 Importante', icon: '⚠️' },
+        'normal': { bg: '#f8fafc', border: '#e2e8f0', badge: '#3b82f6', label: '', icon: '' },
+        'low': { bg: '#f9fafb', border: '#e5e7eb', badge: '#6b7280', label: '', icon: '' }
     };
-    const priorityLabels = {
-        'urgent': '🚨 Urgente',
-        'high': '⚠️ Importante',
-        'normal': '',
-        'low': ''
-    };
+    const config = priorityConfig[ann.priority] || priorityConfig.normal;
 
     const date = new Date(ann.created_at);
     const timeAgo = getTimeAgo(date);
 
+    // Determina se è un link Google Drive
+    const isGoogleDrive = ann.link_url && ann.link_url.includes('drive.google.com');
+    const linkIcon = isGoogleDrive ? '📁' : '🔗';
+    const linkLabel = isGoogleDrive ? 'Apri su Drive' : 'Apri link';
+
     return `
-        <div style="padding:12px; border-bottom:1px solid var(--border-color); ${ann.is_pinned ? 'background:rgba(251, 191, 36, 0.1);' : ''}">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                <div style="flex:1;">
-                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                        ${ann.is_pinned ? '<span title="Fissato">📌</span>' : ''}
-                        ${priorityLabels[ann.priority] ? `<span style="font-size:0.7rem; padding:2px 6px; background:${priorityColors[ann.priority]}; color:white; border-radius:4px;">${priorityLabels[ann.priority]}</span>` : ''}
-                        <span style="font-weight:600; font-size:0.9rem;">${escapeHtml(ann.title)}</span>
+        <div style="padding:14px; margin-bottom:12px; border-radius:12px; background:${ann.is_pinned ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : config.bg}; border:1px solid ${ann.is_pinned ? '#fbbf24' : config.border}; ${ann.is_pinned ? 'box-shadow:0 2px 8px rgba(251,191,36,0.2);' : ''}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                <div style="flex:1; min-width:0;">
+                    <!-- Header con titolo e badge -->
+                    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                        ${ann.is_pinned ? '<span style="font-size:1rem;" title="Fissato in cima">📌</span>' : ''}
+                        ${config.label ? `<span style="font-size:0.7rem; padding:3px 8px; background:${config.badge}; color:white; border-radius:6px; font-weight:500;">${config.label}</span>` : ''}
+                        <h4 style="font-weight:600; font-size:1rem; color:#1f2937; margin:0; line-height:1.3;">${escapeHtml(ann.title)}</h4>
                     </div>
-                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:6px; white-space:pre-wrap;">${escapeHtml(ann.content)}</div>
-                    <div style="font-size:0.7rem; color:var(--text-muted);">
-                        ${ann.created_by_name || 'Admin'} • ${timeAgo}
+
+                    <!-- Contenuto -->
+                    <div style="font-size:0.9rem; color:#4b5563; margin-bottom:10px; white-space:pre-wrap; line-height:1.5;">${escapeHtml(ann.content)}</div>
+
+                    <!-- Link allegato -->
+                    ${ann.link_url ? `
+                        <a href="${escapeHtml(ann.link_url)}" target="_blank" rel="noopener"
+                           style="display:inline-flex; align-items:center; gap:6px; padding:8px 12px; background:white; border:1px solid #e5e7eb; border-radius:8px; color:#2563eb; text-decoration:none; font-size:0.85rem; margin-bottom:10px; transition:all 0.2s;"
+                           onmouseover="this.style.background='#eff6ff';this.style.borderColor='#3b82f6'"
+                           onmouseout="this.style.background='white';this.style.borderColor='#e5e7eb'">
+                            <span>${linkIcon}</span>
+                            <span>${linkLabel}</span>
+                            <span style="font-size:0.7rem;">↗</span>
+                        </a>
+                    ` : ''}
+
+                    <!-- Footer con autore e data -->
+                    <div style="font-size:0.75rem; color:#9ca3af; display:flex; align-items:center; gap:6px;">
+                        <span style="background:#e5e7eb; padding:2px 6px; border-radius:4px;">${ann.created_by_name || 'Admin'}</span>
+                        <span>•</span>
+                        <span>${timeAgo}</span>
+                        ${ann.updated_at && ann.updated_at !== ann.created_at ? '<span>• modificato</span>' : ''}
                     </div>
                 </div>
+
+                <!-- Pulsanti azioni (solo owner) -->
                 ${isOwnerView ? `
-                    <div style="display:flex; gap:4px;">
-                        <button class="btn btn-xs btn-secondary" onclick="editAnnouncement('${ann.id}')" title="Modifica">✏️</button>
-                        <button class="btn btn-xs btn-danger" onclick="deleteAnnouncement('${ann.id}')" title="Elimina">🗑️</button>
+                    <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+                        <button onclick="editAnnouncement('${ann.id}')"
+                                style="padding:8px; background:white; border:1px solid #e5e7eb; border-radius:8px; cursor:pointer; font-size:1rem; transition:all 0.2s;"
+                                onmouseover="this.style.background='#f3f4f6'"
+                                onmouseout="this.style.background='white'"
+                                title="Modifica">✏️</button>
+                        <button onclick="deleteAnnouncement('${ann.id}')"
+                                style="padding:8px; background:white; border:1px solid #fecaca; border-radius:8px; cursor:pointer; font-size:1rem; transition:all 0.2s;"
+                                onmouseover="this.style.background='#fef2f2'"
+                                onmouseout="this.style.background='white'"
+                                title="Elimina">🗑️</button>
                     </div>
                 ` : ''}
             </div>
@@ -24985,15 +25126,41 @@ function openCreateAnnouncementModal() {
     }
 }
 
-// Salva nuovo annuncio
+// Chiudi modal annuncio e reset
+function closeAnnouncementModal() {
+    const modal = document.getElementById('createAnnouncementModal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+    document.body.style.overflow = '';
+    // Reset form
+    document.getElementById('editingAnnouncementId').value = '';
+    document.getElementById('announcementTitle').value = '';
+    document.getElementById('announcementContent').value = '';
+    document.getElementById('announcementLink').value = '';
+    document.getElementById('announcementPriority').value = 'normal';
+    document.getElementById('announcementPinned').checked = false;
+    document.getElementById('announcementModalTitle').textContent = '📢 Nuovo Annuncio';
+}
+
+// Salva nuovo annuncio o aggiorna esistente
 async function saveAnnouncement() {
+    const editingId = document.getElementById('editingAnnouncementId')?.value;
     const title = document.getElementById('announcementTitle')?.value?.trim();
     const content = document.getElementById('announcementContent')?.value?.trim();
+    const linkUrl = document.getElementById('announcementLink')?.value?.trim() || null;
     const priority = document.getElementById('announcementPriority')?.value || 'normal';
     const isPinned = document.getElementById('announcementPinned')?.checked || false;
 
     if (!title || !content) {
         showToast('Inserisci titolo e messaggio', 'error');
+        return;
+    }
+
+    // Valida URL se presente
+    if (linkUrl && !isValidUrl(linkUrl)) {
+        showToast('Inserisci un URL valido', 'error');
         return;
     }
 
@@ -25004,28 +25171,55 @@ async function saveAnnouncement() {
     }
 
     try {
-        const { error } = await supabase
-            .from('agency_announcements')
-            .insert({
-                agency_id: state.profile.organization_id,
-                created_by: state.profile.id,
-                title: title,
-                content: content,
-                priority: priority,
-                is_pinned: isPinned
-            });
+        if (editingId) {
+            // Aggiorna annuncio esistente
+            const { error } = await supabase
+                .from('agency_announcements')
+                .update({
+                    title: title,
+                    content: content,
+                    link_url: linkUrl,
+                    priority: priority,
+                    is_pinned: isPinned
+                })
+                .eq('id', editingId);
 
-        if (error) throw error;
+            if (error) throw error;
+            showToast('Annuncio aggiornato!', 'success');
+        } else {
+            // Crea nuovo annuncio
+            const { error } = await supabase
+                .from('agency_announcements')
+                .insert({
+                    agency_id: state.profile.organization_id,
+                    created_by: state.profile.id,
+                    title: title,
+                    content: content,
+                    link_url: linkUrl,
+                    priority: priority,
+                    is_pinned: isPinned
+                });
 
-        showToast('Annuncio pubblicato!', 'success');
-        closeModal('createAnnouncementModal');
+            if (error) throw error;
+            showToast('Annuncio pubblicato!', 'success');
+        }
 
-        // Ricarica annunci
+        closeAnnouncementModal();
         await loadOwnerAnnouncements();
 
     } catch (err) {
         console.error('Errore salvataggio annuncio:', err);
         showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Helper validazione URL
+function isValidUrl(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
     }
 }
 
@@ -25053,7 +25247,7 @@ async function deleteAnnouncement(announcementId) {
     }
 }
 
-// Modifica annuncio
+// Modifica annuncio - usa il modal unificato
 async function editAnnouncement(announcementId) {
     const supabase = getSupabase();
     if (!supabase) return;
@@ -25071,84 +25265,20 @@ async function editAnnouncement(announcementId) {
             return;
         }
 
-        const modalContent = `
-            <div style="padding:16px;">
-                <div class="form-group">
-                    <label class="form-label">Titolo *</label>
-                    <input type="text" class="form-input" id="editAnnouncementTitle" value="${escapeHtml(ann.title)}" maxlength="100">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Messaggio *</label>
-                    <textarea class="form-input" id="editAnnouncementContent" rows="4" maxlength="1000">${escapeHtml(ann.content)}</textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Priorità</label>
-                    <select class="form-input form-select" id="editAnnouncementPriority">
-                        <option value="normal" ${ann.priority === 'normal' ? 'selected' : ''}>Normale</option>
-                        <option value="low" ${ann.priority === 'low' ? 'selected' : ''}>Bassa</option>
-                        <option value="high" ${ann.priority === 'high' ? 'selected' : ''}>Alta - Importante</option>
-                        <option value="urgent" ${ann.priority === 'urgent' ? 'selected' : ''}>Urgente</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                        <input type="checkbox" id="editAnnouncementPinned" ${ann.is_pinned ? 'checked' : ''}>
-                        <span>📌 Fissa in cima alla bacheca</span>
-                    </label>
-                </div>
-                <div style="display:flex; gap:12px; margin-top:20px;">
-                    <button class="btn btn-secondary" onclick="closeModal('editAnnouncementModal')" style="flex:1;">
-                        Annulla
-                    </button>
-                    <button class="btn btn-primary" onclick="updateAnnouncement('${announcementId}')" style="flex:1;">
-                        💾 Salva Modifiche
-                    </button>
-                </div>
-            </div>
-        `;
+        // Popola il form con i dati esistenti
+        document.getElementById('editingAnnouncementId').value = ann.id;
+        document.getElementById('announcementTitle').value = ann.title || '';
+        document.getElementById('announcementContent').value = ann.content || '';
+        document.getElementById('announcementLink').value = ann.link_url || '';
+        document.getElementById('announcementPriority').value = ann.priority || 'normal';
+        document.getElementById('announcementPinned').checked = ann.is_pinned || false;
+        document.getElementById('announcementModalTitle').textContent = '✏️ Modifica Annuncio';
 
-        showDynamicModal('editAnnouncementModal', '✏️ Modifica Annuncio', modalContent);
+        // Apri il modal
+        openCreateAnnouncementModal();
 
     } catch (err) {
         console.error('Errore caricamento annuncio:', err);
-        showToast('Errore: ' + err.message, 'error');
-    }
-}
-
-// Aggiorna annuncio
-async function updateAnnouncement(announcementId) {
-    const title = document.getElementById('editAnnouncementTitle')?.value?.trim();
-    const content = document.getElementById('editAnnouncementContent')?.value?.trim();
-    const priority = document.getElementById('editAnnouncementPriority')?.value || 'normal';
-    const isPinned = document.getElementById('editAnnouncementPinned')?.checked || false;
-
-    if (!title || !content) {
-        showToast('Inserisci titolo e messaggio', 'error');
-        return;
-    }
-
-    const supabase = getSupabase();
-    if (!supabase) return;
-
-    try {
-        const { error } = await supabase
-            .from('agency_announcements')
-            .update({
-                title: title,
-                content: content,
-                priority: priority,
-                is_pinned: isPinned
-            })
-            .eq('id', announcementId);
-
-        if (error) throw error;
-
-        showToast('Annuncio aggiornato!', 'success');
-        closeModal('editAnnouncementModal');
-        await loadOwnerAnnouncements();
-
-    } catch (err) {
-        console.error('Errore aggiornamento annuncio:', err);
         showToast('Errore: ' + err.message, 'error');
     }
 }
@@ -25190,6 +25320,333 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ============================================
+// GESTIONE DOCUMENTI AGENZIA
+// ============================================
+
+// Apri modal creazione documento
+function openCreateDocumentModal() {
+    // Reset form
+    document.getElementById('editingDocumentId').value = '';
+    document.getElementById('documentTitle').value = '';
+    document.getElementById('documentDescription').value = '';
+    document.getElementById('documentUrl').value = '';
+    document.getElementById('documentCategory').value = 'manual';
+    document.getElementById('documentRequired').checked = false;
+    document.getElementById('documentModalTitle').textContent = '📚 Nuovo Documento';
+
+    // Apri modal
+    const modal = document.getElementById('createDocumentModal');
+    if (modal) {
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// Chiudi modal documento
+function closeDocumentModal() {
+    const modal = document.getElementById('createDocumentModal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+    document.body.style.overflow = '';
+}
+
+// Salva documento
+async function saveDocument() {
+    const editingId = document.getElementById('editingDocumentId')?.value;
+    const title = document.getElementById('documentTitle')?.value?.trim();
+    const description = document.getElementById('documentDescription')?.value?.trim() || null;
+    const documentUrl = document.getElementById('documentUrl')?.value?.trim();
+    const category = document.getElementById('documentCategory')?.value || 'general';
+    const isRequired = document.getElementById('documentRequired')?.checked || false;
+
+    if (!title || !documentUrl) {
+        showToast('Inserisci titolo e link documento', 'error');
+        return;
+    }
+
+    if (!isValidUrl(documentUrl)) {
+        showToast('Inserisci un URL valido', 'error');
+        return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) {
+        showToast('Errore connessione', 'error');
+        return;
+    }
+
+    try {
+        if (editingId) {
+            // Aggiorna documento esistente
+            const { error } = await supabase
+                .from('agency_documents')
+                .update({
+                    title: title,
+                    description: description,
+                    document_url: documentUrl,
+                    category: category,
+                    is_required: isRequired
+                })
+                .eq('id', editingId);
+
+            if (error) throw error;
+            showToast('Documento aggiornato!', 'success');
+        } else {
+            // Crea nuovo documento
+            const { error } = await supabase
+                .from('agency_documents')
+                .insert({
+                    agency_id: state.profile.organization_id,
+                    created_by: state.profile.id,
+                    title: title,
+                    description: description,
+                    document_url: documentUrl,
+                    category: category,
+                    is_required: isRequired
+                });
+
+            if (error) throw error;
+            showToast('Documento aggiunto!', 'success');
+        }
+
+        closeDocumentModal();
+        await loadOwnerDocuments();
+
+    } catch (err) {
+        console.error('Errore salvataggio documento:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Carica documenti per owner
+async function loadOwnerDocuments() {
+    const container = document.getElementById('ownerDocumentsList');
+    if (!container) return;
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) {
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">Nessun documento</div>';
+        return;
+    }
+
+    try {
+        const { data: documents, error } = await supabase
+            .from('agency_documents')
+            .select('*')
+            .eq('agency_id', state.profile.organization_id)
+            .order('is_required', { ascending: false })
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (!documents || documents.length === 0) {
+            container.innerHTML = `
+                <div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">
+                    <div style="font-size:1.2rem; margin-bottom:4px;">📖</div>
+                    Nessun documento.<br>
+                    <span style="font-size:0.75rem;">Aggiungi manuali, policy o contratti per il tuo team.</span>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = documents.map(doc => renderDocumentItem(doc, true)).join('');
+
+    } catch (err) {
+        console.error('Errore loadOwnerDocuments:', err);
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary);">Errore caricamento</div>';
+    }
+}
+
+// Carica documenti per animatori
+async function loadMyAgencyDocuments() {
+    const container = document.getElementById('myAgencyDocuments');
+    const countBadge = document.getElementById('myDocumentsCount');
+    if (!container) return;
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) {
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">Nessun documento</div>';
+        if (countBadge) countBadge.textContent = '0';
+        return;
+    }
+
+    try {
+        const { data: documents, error } = await supabase.rpc('get_agency_documents', {
+            p_agency_id: state.profile.organization_id,
+            p_user_id: state.profile.id
+        });
+
+        if (error) {
+            // Fallback se RPC non esiste
+            const { data: docs, error: err2 } = await supabase
+                .from('agency_documents')
+                .select('*')
+                .eq('agency_id', state.profile.organization_id)
+                .order('is_required', { ascending: false })
+                .order('created_at', { ascending: false });
+
+            if (err2) throw err2;
+
+            if (!docs || docs.length === 0) {
+                container.innerHTML = `
+                    <div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">
+                        <div style="font-size:1.5rem; margin-bottom:4px;">📖</div>
+                        Nessun documento disponibile
+                    </div>
+                `;
+                if (countBadge) countBadge.textContent = '0';
+                return;
+            }
+
+            if (countBadge) countBadge.textContent = docs.length;
+            container.innerHTML = docs.map(doc => renderDocumentItem(doc, false)).join('');
+            return;
+        }
+
+        if (!documents || documents.length === 0) {
+            container.innerHTML = `
+                <div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">
+                    <div style="font-size:1.5rem; margin-bottom:4px;">📖</div>
+                    Nessun documento disponibile
+                </div>
+            `;
+            if (countBadge) countBadge.textContent = '0';
+            return;
+        }
+
+        if (countBadge) countBadge.textContent = documents.length;
+        container.innerHTML = documents.map(doc => renderDocumentItem(doc, false)).join('');
+
+    } catch (err) {
+        console.error('Errore loadMyAgencyDocuments:', err);
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary);">Errore caricamento</div>';
+    }
+}
+
+// Renderizza singolo documento
+function renderDocumentItem(doc, isOwnerView = false) {
+    const categoryConfig = {
+        'manual': { icon: '📖', label: 'Manuale', bg: '#dbeafe', color: '#1d4ed8' },
+        'policy': { icon: '📋', label: 'Policy', bg: '#fef3c7', color: '#b45309' },
+        'contract': { icon: '📝', label: 'Contratto', bg: '#fee2e2', color: '#dc2626' },
+        'training': { icon: '🎓', label: 'Formazione', bg: '#d1fae5', color: '#059669' },
+        'general': { icon: '📁', label: 'Generale', bg: '#f3f4f6', color: '#4b5563' }
+    };
+    const config = categoryConfig[doc.category] || categoryConfig.general;
+
+    const isGoogleDrive = doc.document_url && doc.document_url.includes('drive.google.com');
+
+    return `
+        <div style="padding:12px; margin-bottom:8px; border-radius:10px; background:${config.bg}; border:1px solid rgba(0,0,0,0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                        ${doc.is_required ? '<span style="background:#dc2626; color:white; font-size:0.65rem; padding:2px 6px; border-radius:4px;">OBBLIGATORIO</span>' : ''}
+                        <span style="background:${config.bg}; color:${config.color}; font-size:0.7rem; padding:2px 6px; border-radius:4px; border:1px solid ${config.color}40;">${config.icon} ${config.label}</span>
+                    </div>
+                    <div style="font-weight:600; font-size:0.9rem; color:#1f2937; margin-bottom:4px;">${escapeHtml(doc.title)}</div>
+                    ${doc.description ? `<div style="font-size:0.8rem; color:#6b7280; margin-bottom:6px;">${escapeHtml(doc.description)}</div>` : ''}
+                    <a href="${escapeHtml(doc.document_url)}" target="_blank" rel="noopener"
+                       style="display:inline-flex; align-items:center; gap:4px; padding:6px 10px; background:white; border:1px solid #e5e7eb; border-radius:6px; color:#2563eb; text-decoration:none; font-size:0.8rem;"
+                       onclick="markDocumentAsRead('${doc.id}')">
+                        ${isGoogleDrive ? '📁 Apri su Drive' : '🔗 Apri documento'} ↗
+                    </a>
+                </div>
+                ${isOwnerView ? `
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                        <button onclick="editDocument('${doc.id}')"
+                                style="padding:6px; background:white; border:1px solid #e5e7eb; border-radius:6px; cursor:pointer; font-size:0.9rem;"
+                                title="Modifica">✏️</button>
+                        <button onclick="deleteDocument('${doc.id}')"
+                                style="padding:6px; background:white; border:1px solid #fecaca; border-radius:6px; cursor:pointer; font-size:0.9rem;"
+                                title="Elimina">🗑️</button>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Modifica documento
+async function editDocument(documentId) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        const { data: doc, error } = await supabase
+            .from('agency_documents')
+            .select('*')
+            .eq('id', documentId)
+            .single();
+
+        if (error || !doc) {
+            showToast('Documento non trovato', 'error');
+            return;
+        }
+
+        // Popola form
+        document.getElementById('editingDocumentId').value = doc.id;
+        document.getElementById('documentTitle').value = doc.title || '';
+        document.getElementById('documentDescription').value = doc.description || '';
+        document.getElementById('documentUrl').value = doc.document_url || '';
+        document.getElementById('documentCategory').value = doc.category || 'general';
+        document.getElementById('documentRequired').checked = doc.is_required || false;
+        document.getElementById('documentModalTitle').textContent = '✏️ Modifica Documento';
+
+        // Apri modal
+        openCreateDocumentModal();
+
+    } catch (err) {
+        console.error('Errore caricamento documento:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Elimina documento
+async function deleteDocument(documentId) {
+    if (!confirm('Eliminare questo documento?')) return;
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        const { error } = await supabase
+            .from('agency_documents')
+            .delete()
+            .eq('id', documentId);
+
+        if (error) throw error;
+
+        showToast('Documento eliminato', 'success');
+        await loadOwnerDocuments();
+
+    } catch (err) {
+        console.error('Errore eliminazione documento:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Segna documento come letto
+async function markDocumentAsRead(documentId) {
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.id) return;
+
+    try {
+        await supabase.rpc('mark_document_read', {
+            p_document_id: documentId,
+            p_user_id: state.profile.id
+        });
+    } catch (err) {
+        console.error('Errore mark document read:', err);
+    }
 }
 
 // Apri modal invita animatore
