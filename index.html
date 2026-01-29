@@ -23449,17 +23449,8 @@ switchPage = function(pageName) {
     // Show new contextual tip for the new page
     setTimeout(showContextualTip, 500);
 
-    // Handle new pages: skills and team
-    switch(pageName) {
-        case 'skills':
-            renderSkillsPage();
-            break;
-        case 'team':
-            renderTeamPage();
-            break;
-    }
-
     // Update nav - new navigation: home, tasks, skills, team, more
+    // NOTA: skills e team sono già gestiti in switchPage originale
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const navItems = document.querySelectorAll('.nav-item');
     const mainNavPages = ['home', 'tasks', 'skills', 'team'];
@@ -25903,14 +25894,14 @@ function getProjectById(projectId) {
     return null;
 }
 
-function renderTeamPage() {
+async function renderTeamPage() {
     console.log('🏢 renderTeamPage chiamato');
     console.log('  - state.cloudUser:', state.cloudUser);
     console.log('  - state.teamProjects:', state.teamProjects?.length || 0);
     console.log('  - state.sharedProjects:', state.sharedProjects?.length || 0);
 
-    // Carica gestione agenzia (solo per owner/admin)
-    loadAgencyData();
+    // Carica gestione agenzia (solo per owner/admin) - AWAIT per assicurarsi che i dati siano pronti
+    await loadAgencyData();
 
     renderMyTeams();
     renderTeamMembers();
