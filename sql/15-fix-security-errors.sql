@@ -1,7 +1,7 @@
 -- ============================================
 -- FIX ERRORI DI SICUREZZA SUPABASE
 -- 1. Rimuove SECURITY DEFINER dalla view
--- 2. Abilita RLS sulla tabella achievements
+-- 2. Abilita RLS sulla tabella achievements (tabella definizioni, pubblica in lettura)
 -- ============================================
 
 -- 1. Fix view user_accessible_organizations - rimuove SECURITY DEFINER
@@ -33,28 +33,18 @@ LEFT JOIN organizations ao ON ao.id = am.agency_id
 WHERE o.id IS NOT NULL OR ao.id IS NOT NULL;
 
 -- 2. Abilita RLS sulla tabella achievements
+-- NOTA: achievements è una tabella di definizioni (non ha user_id)
+-- Tutti possono leggerla, solo admin/sistema può modificarla
 ALTER TABLE achievements ENABLE ROW LEVEL SECURITY;
 
--- Policy per achievements: ogni utente vede solo i propri
-DROP POLICY IF EXISTS "Users can view own achievements" ON achievements;
-CREATE POLICY "Users can view own achievements"
+-- Policy per achievements: tutti possono leggere le definizioni
+DROP POLICY IF EXISTS "Anyone can view achievements" ON achievements;
+CREATE POLICY "Anyone can view achievements"
 ON achievements FOR SELECT
-USING (user_id = auth.uid());
+USING (true);
 
-DROP POLICY IF EXISTS "Users can insert own achievements" ON achievements;
-CREATE POLICY "Users can insert own achievements"
-ON achievements FOR INSERT
-WITH CHECK (user_id = auth.uid());
-
-DROP POLICY IF EXISTS "Users can update own achievements" ON achievements;
-CREATE POLICY "Users can update own achievements"
-ON achievements FOR UPDATE
-USING (user_id = auth.uid());
-
-DROP POLICY IF EXISTS "Users can delete own achievements" ON achievements;
-CREATE POLICY "Users can delete own achievements"
-ON achievements FOR DELETE
-USING (user_id = auth.uid());
+-- Solo service_role può modificare achievements (gestito lato backend)
+-- Non servono policy per INSERT/UPDATE/DELETE per utenti normali
 
 -- 3. Verifica: mostra le policy create
 -- SELECT * FROM pg_policies WHERE tablename = 'achievements';
