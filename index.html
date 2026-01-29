@@ -4270,17 +4270,11 @@
                     <small class="text-muted">Seleziona i calendari a cui l'animatore avrà accesso</small>
                 </div>
 
-                <!-- Avviso importante -->
-                <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:12px; margin-top:12px;">
-                    <div style="font-weight:600; color:#92400e; margin-bottom:4px;">⚠️ Importante</div>
-                    <div style="font-size:0.85rem; color:#78350f;">
-                        Dopo l'invito, <strong>condividi i calendari selezionati</strong> con l'email dell'animatore su Google Calendar:
-                        <ol style="margin:8px 0 0 0; padding-left:20px;">
-                            <li>Apri Google Calendar</li>
-                            <li>Clicca sui 3 puntini del calendario</li>
-                            <li>Impostazioni e condivisione</li>
-                            <li>Aggiungi l'email dell'animatore</li>
-                        </ol>
+                <!-- Info condivisione automatica -->
+                <div style="background:#d1fae5; border:1px solid #10b981; border-radius:8px; padding:12px; margin-top:12px;">
+                    <div style="font-weight:600; color:#065f46; margin-bottom:4px;">✨ Condivisione Automatica</div>
+                    <div style="font-size:0.85rem; color:#047857;">
+                        I calendari selezionati verranno <strong>condivisi automaticamente</strong> con l'email dell'animatore su Google Calendar.
                     </div>
                 </div>
             </div>
@@ -24213,6 +24207,72 @@ function openInviteAnimatorModal() {
     openModal('inviteAnimatorModal');
 }
 
+// Condivide i calendari Google con un utente
+async function shareCalendarsWithUser(email, calendars) {
+    const results = { shared: 0, errors: [] };
+
+    for (const cal of calendars) {
+        try {
+            // Usa l'API ACL di Google Calendar per condividere
+            await withValidGoogleToken(async () => {
+                const response = await gapi.client.calendar.acl.insert({
+                    calendarId: cal.id,
+                    resource: {
+                        role: 'reader', // 'reader' = può vedere, 'writer' = può modificare
+                        scope: {
+                            type: 'user',
+                            value: email
+                        }
+                    }
+                });
+                console.log('✅ Calendario condiviso:', cal.name, 'con', email);
+                return response;
+            });
+            results.shared++;
+        } catch (err) {
+            console.error('❌ Errore condivisione calendario:', cal.name, err);
+            // Ignora errore se già condiviso
+            if (err.result?.error?.code === 409) {
+                console.log('ℹ️ Calendario già condiviso con', email);
+                results.shared++;
+            } else {
+                results.errors.push({ calendar: cal.name, error: err.message || err.result?.error?.message });
+            }
+        }
+    }
+
+    return results;
+}
+
+// Rimuove la condivisione di un calendario con un utente
+async function unshareCalendarWithUser(email, calendarId) {
+    try {
+        // Prima ottieni l'ID della regola ACL
+        const aclList = await withValidGoogleToken(async () => {
+            return await gapi.client.calendar.acl.list({ calendarId: calendarId });
+        });
+
+        const rule = aclList.result.items?.find(r =>
+            r.scope?.type === 'user' && r.scope?.value?.toLowerCase() === email.toLowerCase()
+        );
+
+        if (rule) {
+            await withValidGoogleToken(async () => {
+                return await gapi.client.calendar.acl.delete({
+                    calendarId: calendarId,
+                    ruleId: rule.id
+                });
+            });
+            console.log('✅ Condivisione rimossa per', email, 'da calendario', calendarId);
+            return true;
+        }
+        return false;
+    } catch (err) {
+        console.error('❌ Errore rimozione condivisione:', err);
+        return false;
+    }
+}
+
 // Carica calendari per assegnazione
 function loadCalendarsForInvite() {
     const container = document.getElementById('inviteCalendarsList');
@@ -24345,6 +24405,18 @@ async function sendAnimatorInvite() {
             action: 'invited',
             details: { role, calendars_count: selectedCalendars.length }
         });
+
+        // Condividi automaticamente i calendari Google selezionati
+        if (selectedCalendars.length > 0 && isGoogleSignedIn) {
+            showToast('Condivisione calendari in corso...', 'info');
+            const shareResults = await shareCalendarsWithUser(email, selectedCalendars);
+            if (shareResults.errors.length > 0) {
+                console.warn('Alcuni calendari non condivisi:', shareResults.errors);
+                showToast(`${shareResults.shared} calendari condivisi, ${shareResults.errors.length} errori`, 'warning');
+            } else {
+                showToast(`${shareResults.shared} calendari condivisi con successo!`, 'success');
+            }
+        }
 
         // TODO: Invia email con link invito (richiede backend email)
         // Per ora, mostra il link da condividere manualmente
