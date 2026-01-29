@@ -24965,8 +24965,15 @@ function openCreateAnnouncementModal() {
 
     // Blocca scroll e mostra modal
     document.body.style.overflow = 'hidden';
-    modalOverlay.classList.add('active');
-    console.log('📢 Modal creato e attivato');
+
+    // Forza reflow prima di aggiungere la classe active (per animazione CSS)
+    void modalOverlay.offsetHeight;
+
+    // Usa setTimeout per assicurarsi che il DOM sia aggiornato
+    setTimeout(() => {
+        modalOverlay.classList.add('active');
+        console.log('📢 Modal attivato, classList:', modalOverlay.classList.toString());
+    }, 10);
 }
 
 // Salva nuovo annuncio
