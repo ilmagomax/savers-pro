@@ -24975,8 +24975,14 @@ function openCreateAnnouncementModal() {
     if (priorityEl) priorityEl.value = 'normal';
     if (pinnedEl) pinnedEl.checked = false;
 
-    // Usa openModal standard
-    openModal('createAnnouncementModal');
+    // Apri modal con stili forzati (fix per problemi cache)
+    const modal = document.getElementById('createAnnouncementModal');
+    if (modal) {
+        // Forza stili overlay per garantire visualizzazione
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
 }
 
 // Salva nuovo annuncio
