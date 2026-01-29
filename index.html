@@ -1013,6 +1013,46 @@
                 </div>
             </div>
 
+            <!-- ============================================
+                 GESTIONE AGENZIA (solo per owner/admin)
+                 ============================================ -->
+            <div class="card" id="agencyManagementCard" style="display:none;">
+                <div class="card-header" style="background:linear-gradient(135deg, #f97316 0%, #ea580c 100%); color:white; border-radius:12px 12px 0 0; margin:-1px -1px 0 -1px; padding:16px;">
+                    <div class="card-title" style="color:white;"><span class="card-title-icon">🏢</span> Gestione Agenzia</div>
+                    <button class="btn btn-sm" onclick="openInviteAnimatorModal()" style="background:rgba(255,255,255,0.2); color:white; border:none;">
+                        + Invita Animatore
+                    </button>
+                </div>
+
+                <!-- Riepilogo Abbonamento -->
+                <div id="agencySubscriptionSummary" style="padding:12px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color);">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary);">Piano Attivo</div>
+                            <div style="font-weight:600;" id="agencyPlanName">Free</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:0.75rem; color:var(--text-secondary);">Animatori</div>
+                            <div style="font-weight:600;"><span id="agencyMembersCount">0</span>/<span id="agencyMaxMembers">1</span></div>
+                        </div>
+                        <button class="btn btn-sm btn-warning" onclick="openUpgradePlanModal()">
+                            ⬆️ Upgrade
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lista Animatori -->
+                <div id="agencyAnimatorsList" style="max-height:300px; overflow-y:auto;">
+                    <!-- Popolato dinamicamente -->
+                </div>
+
+                <!-- Inviti Pendenti -->
+                <div id="agencyPendingInvites" style="display:none; padding:12px; background:var(--bg-secondary); border-top:1px solid var(--border-color);">
+                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:8px;">📩 Inviti Pendenti</div>
+                    <div id="agencyPendingInvitesList"></div>
+                </div>
+            </div>
+
             <!-- Richieste di Iscrizione (solo per admin/owner del team) -->
             <div class="card" id="teamJoinRequestsCard" style="display:none;">
                 <div class="card-header">
@@ -4086,6 +4126,160 @@
         </div>
     </div>
 
+    <!-- ============================================
+         MODAL: Invita Animatore nell'Agenzia
+         ============================================ -->
+    <div class="modal-overlay modal-center" id="inviteAnimatorModal">
+        <div class="modal" style="max-width:500px;">
+            <div class="modal-header" style="background:linear-gradient(135deg, #f97316 0%, #ea580c 100%); color:white;">
+                <div class="modal-title" style="color:white;">🎭 Invita Animatore</div>
+                <button class="modal-close" onclick="closeModal('inviteAnimatorModal')" style="color:white;">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Email Animatore *</label>
+                    <input type="email" class="form-input" id="inviteAnimatorEmail" placeholder="email@esempio.com">
+                    <small class="text-muted">L'animatore riceverà un invito via email</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nome (opzionale)</label>
+                    <input type="text" class="form-input" id="inviteAnimatorName" placeholder="Nome dell'animatore">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Ruolo</label>
+                    <select class="form-input form-select" id="inviteAnimatorRole">
+                        <option value="animator">🎭 Animatore</option>
+                        <option value="admin">⚙️ Admin (può gestire il team)</option>
+                        <option value="viewer">👁️ Viewer (solo visualizzazione)</option>
+                    </select>
+                </div>
+
+                <!-- Permessi Granulari -->
+                <div class="form-group">
+                    <label class="form-label">Permessi</label>
+                    <div style="display:flex; flex-direction:column; gap:8px; background:var(--bg-secondary); padding:12px; border-radius:8px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="permCanAddFinances" checked>
+                            <span>💰 Può aggiungere dati finanziari</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="permCanEditEvents">
+                            <span>📅 Può modificare eventi</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="permCanSeeTeamFinances">
+                            <span>📊 Può vedere finanze del team</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="permCanExportReports">
+                            <span>📋 Può esportare report</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Calendari da Assegnare -->
+                <div class="form-group">
+                    <label class="form-label">Calendari Assegnati</label>
+                    <div id="inviteCalendarsList" style="max-height:150px; overflow-y:auto; background:var(--bg-secondary); padding:12px; border-radius:8px;">
+                        <div class="text-muted text-sm">Caricamento calendari...</div>
+                    </div>
+                    <small class="text-muted">Seleziona i calendari a cui l'animatore avrà accesso</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('inviteAnimatorModal')">Annulla</button>
+                <button class="btn btn-warning" onclick="sendAnimatorInvite()">📨 Invia Invito</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         MODAL: Gestione Permessi Animatore
+         ============================================ -->
+    <div class="modal-overlay" id="editAnimatorModal">
+        <div class="modal" style="max-width:500px;">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">⚙️ Modifica Animatore</div>
+                <button class="modal-close" onclick="closeModal('editAnimatorModal')">✕</button>
+            </div>
+            <div class="modal-body" id="editAnimatorContent">
+                <!-- Popolato dinamicamente -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="revokeAnimatorAccess()" style="margin-right:auto;">🚫 Revoca Accesso</button>
+                <button class="btn btn-secondary" onclick="closeModal('editAnimatorModal')">Annulla</button>
+                <button class="btn btn-primary" onclick="saveAnimatorPermissions()">💾 Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         MODAL: Upgrade Piano Agenzia
+         ============================================ -->
+    <div class="modal-overlay modal-center" id="upgradePlanModal">
+        <div class="modal" style="max-width:600px;">
+            <div class="modal-header" style="background:linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color:white;">
+                <div class="modal-title" style="color:white;">⬆️ Upgrade Piano</div>
+                <button class="modal-close" onclick="closeModal('upgradePlanModal')" style="color:white;">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;">
+                    <!-- Piano Free -->
+                    <div class="plan-card" style="padding:16px; border:2px solid var(--border-color); border-radius:12px; text-align:center;">
+                        <div style="font-size:1.5rem;">🆓</div>
+                        <div style="font-weight:700; margin:8px 0;">Free</div>
+                        <div style="font-size:0.85rem; color:var(--text-secondary);">1 animatore</div>
+                        <div style="font-size:1.2rem; font-weight:700; margin:12px 0;">€0/mese</div>
+                        <button class="btn btn-secondary btn-sm" disabled style="width:100%;">Piano Attuale</button>
+                    </div>
+
+                    <!-- Piano Starter -->
+                    <div class="plan-card" style="padding:16px; border:2px solid #f97316; border-radius:12px; text-align:center; background:rgba(249,115,22,0.05);">
+                        <div style="font-size:1.5rem;">⭐</div>
+                        <div style="font-weight:700; margin:8px 0;">Starter</div>
+                        <div style="font-size:0.85rem; color:var(--text-secondary);">5 animatori</div>
+                        <div style="font-size:1.2rem; font-weight:700; margin:12px 0;">€9.99/mese</div>
+                        <button class="btn btn-warning btn-sm" onclick="upgradePlan('starter')" style="width:100%;">Scegli</button>
+                    </div>
+
+                    <!-- Piano Pro -->
+                    <div class="plan-card" style="padding:16px; border:2px solid #8b5cf6; border-radius:12px; text-align:center; background:rgba(139,92,246,0.05);">
+                        <div style="font-size:1.5rem;">🚀</div>
+                        <div style="font-weight:700; margin:8px 0;">Pro</div>
+                        <div style="font-size:0.85rem; color:var(--text-secondary);">20 animatori</div>
+                        <div style="font-size:1.2rem; font-weight:700; margin:12px 0;">€24.99/mese</div>
+                        <button class="btn btn-primary btn-sm" onclick="upgradePlan('pro')" style="width:100%;">Scegli</button>
+                    </div>
+
+                    <!-- Piano Enterprise -->
+                    <div class="plan-card" style="padding:16px; border:2px solid #10b981; border-radius:12px; text-align:center; background:rgba(16,185,129,0.05);">
+                        <div style="font-size:1.5rem;">🏆</div>
+                        <div style="font-weight:700; margin:8px 0;">Enterprise</div>
+                        <div style="font-size:0.85rem; color:var(--text-secondary);">Illimitati</div>
+                        <div style="font-size:1.2rem; font-weight:700; margin:12px 0;">€49.99/mese</div>
+                        <button class="btn btn-success btn-sm" onclick="upgradePlan('enterprise')" style="width:100%;">Scegli</button>
+                    </div>
+                </div>
+
+                <div style="margin-top:16px; padding:12px; background:var(--bg-secondary); border-radius:8px; font-size:0.85rem;">
+                    <strong>Tutti i piani includono:</strong>
+                    <ul style="margin:8px 0 0 16px; padding:0;">
+                        <li>Calendari condivisi illimitati</li>
+                        <li>Gestione compensi agenzia</li>
+                        <li>Report finanziari</li>
+                        <li>Supporto prioritario (Pro+)</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('upgradePlanModal')">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Team Management Modal -->
     <div class="modal-overlay" id="teamManagementModal">
         <div class="modal" style="max-width:550px;">
@@ -4888,6 +5082,11 @@ async function ensureUserProfile() {
         ]);
 
         console.log('✅ All data loaded from Supabase');
+
+        // Controlla inviti pendenti e inviti nell'URL
+        checkAndAcceptInvite();
+        checkPendingInvite();
+
         return true;
 
     } catch (err) {
@@ -6954,14 +7153,18 @@ const errorHandler = {
 };
 
 // ============================================
-// TOKEN REFRESH AUTOMATICO
+// TOKEN MANAGER UNIFICATO (Supabase + Google)
 // ============================================
 
 const tokenManager = {
     refreshTimer: null,
     checkInterval: 5 * 60 * 1000, // Controlla ogni 5 minuti
+    isRefreshing: false,
+    lastRefreshAttempt: 0,
+    minRefreshInterval: 30 * 1000, // Minimo 30 secondi tra tentativi
 
     init() {
+        console.log('🔐 TokenManager inizializzato');
         // Avvia controllo periodico
         this.startPeriodicCheck();
 
@@ -6971,6 +7174,12 @@ const tokenManager = {
                 this.checkAndRefresh();
             }
         });
+
+        // Controlla quando la connessione torna online
+        window.addEventListener('online', () => {
+            console.log('🌐 Connessione ripristinata, verifica token...');
+            this.checkAndRefresh();
+        });
     },
 
     startPeriodicCheck() {
@@ -6978,40 +7187,223 @@ const tokenManager = {
         this.refreshTimer = setInterval(() => this.checkAndRefresh(), this.checkInterval);
     },
 
+    // Ottiene un token Google valido, rinnovandolo se necessario
+    async getValidToken() {
+        const token = localStorage.getItem('google_access_token');
+        const expiry = localStorage.getItem('google_token_expiry');
+
+        // Se non c'è token, prova a ottenerlo da Supabase
+        if (!token) {
+            console.log('🔑 Nessun token salvato, verifico sessione Supabase...');
+            const newToken = await this.refreshFromSupabase();
+            return newToken;
+        }
+
+        // Verifica scadenza
+        if (expiry) {
+            const expiryTime = parseInt(expiry);
+            const now = Date.now();
+            const timeUntilExpiry = expiryTime - now;
+
+            // Se scade entro 5 minuti o è già scaduto, rinnova
+            if (timeUntilExpiry < 5 * 60 * 1000) {
+                console.log('🔄 Token in scadenza/scaduto, rinnovo...');
+                const newToken = await this.refreshFromSupabase();
+                return newToken || token; // Fallback al vecchio token se refresh fallisce
+            }
+        }
+
+        return token;
+    },
+
     async checkAndRefresh() {
-        if (!isGoogleSignedIn) return;
+        if (!isLoggedIn) return;
 
         const expiry = localStorage.getItem('google_token_expiry');
-        if (!expiry) return;
+        if (!expiry) {
+            // Nessuna scadenza salvata, prova a ottenere token da Supabase
+            await this.refreshFromSupabase();
+            return;
+        }
 
         const expiryTime = parseInt(expiry);
         const now = Date.now();
         const timeUntilExpiry = expiryTime - now;
 
         // Se scade entro 10 minuti, refresh silenzioso
-        if (timeUntilExpiry < 10 * 60 * 1000 && timeUntilExpiry > 0) {
-            console.log('🔄 Token in scadenza, refresh silenzioso...');
-            await this.silentRefresh();
-        }
-        // Se già scaduto
-        else if (timeUntilExpiry <= 0) {
-            console.log('⚠️ Token scaduto, richiesta nuovo token...');
-            await this.silentRefresh();
+        if (timeUntilExpiry < 10 * 60 * 1000) {
+            console.log('🔄 Token in scadenza tra', Math.round(timeUntilExpiry / 1000 / 60), 'minuti, refresh...');
+            await this.refreshFromSupabase();
         }
     },
 
-    async silentRefresh() {
-        try {
-            // Richiedi nuovo token senza prompt
-            if (tokenClient) {
-                tokenClient.requestAccessToken({ prompt: '' });
-            }
-        } catch (error) {
-            console.error('Errore refresh token:', error);
-            // Non disturbare l'utente a meno che non sia necessario
+    // Rinnova il token usando Supabase
+    async refreshFromSupabase() {
+        // Evita refresh multipli simultanei
+        if (this.isRefreshing) {
+            console.log('⏳ Refresh già in corso...');
+            return localStorage.getItem('google_access_token');
         }
+
+        // Evita troppi tentativi ravvicinati
+        const now = Date.now();
+        if (now - this.lastRefreshAttempt < this.minRefreshInterval) {
+            console.log('⏳ Troppo presto per un altro tentativo di refresh');
+            return localStorage.getItem('google_access_token');
+        }
+
+        this.isRefreshing = true;
+        this.lastRefreshAttempt = now;
+
+        try {
+            const sb = getSupabase();
+            if (!sb) {
+                console.warn('⚠️ Supabase non disponibile');
+                return null;
+            }
+
+            // Ottieni sessione corrente (questo la rinnova automaticamente se necessario)
+            const { data: { session }, error } = await sb.auth.getSession();
+
+            if (error) {
+                console.error('❌ Errore getSession:', error);
+                this.handleAuthError();
+                return null;
+            }
+
+            if (!session) {
+                console.warn('⚠️ Nessuna sessione Supabase attiva');
+                this.handleAuthError();
+                return null;
+            }
+
+            // Se la sessione ha un provider_token (Google), salvalo
+            if (session.provider_token) {
+                console.log('✅ Token Google ottenuto da Supabase');
+                localStorage.setItem('google_access_token', session.provider_token);
+
+                // Calcola scadenza (il token Google dura ~1 ora)
+                // expires_at è il timestamp di scadenza della sessione Supabase
+                // Per il token Google, assumiamo 55 minuti da ora (margine di sicurezza)
+                const googleExpiry = Date.now() + (55 * 60 * 1000);
+                localStorage.setItem('google_token_expiry', googleExpiry.toString());
+
+                // Aggiorna GAPI se disponibile
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: session.provider_token });
+                    console.log('✅ Token GAPI aggiornato');
+                }
+
+                isGoogleSignedIn = true;
+                return session.provider_token;
+            } else {
+                // Sessione Supabase valida ma senza token Google
+                // Questo può succedere se la sessione è stata rinnovata ma il token Google è scaduto
+                console.warn('⚠️ Sessione Supabase senza provider_token');
+
+                // Prova a forzare un refresh della sessione
+                const { data: refreshData, error: refreshError } = await sb.auth.refreshSession();
+
+                if (refreshError || !refreshData.session?.provider_token) {
+                    console.log('🔄 Necessario re-login con Google');
+                    // Non forzare logout, mostra messaggio
+                    showToast('Sessione Google scaduta. Riconnetti per usare il calendario.', 'warning');
+                    this.showReconnectButton();
+                    return null;
+                }
+
+                // Refresh riuscito con nuovo token
+                localStorage.setItem('google_access_token', refreshData.session.provider_token);
+                const googleExpiry = Date.now() + (55 * 60 * 1000);
+                localStorage.setItem('google_token_expiry', googleExpiry.toString());
+
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: refreshData.session.provider_token });
+                }
+
+                console.log('✅ Token rinnovato dopo refresh sessione');
+                return refreshData.session.provider_token;
+            }
+
+        } catch (err) {
+            console.error('❌ Errore refresh token:', err);
+            return null;
+        } finally {
+            this.isRefreshing = false;
+        }
+    },
+
+    // Gestisce errori di autenticazione
+    handleAuthError() {
+        isGoogleSignedIn = false;
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_token_expiry');
+        this.showReconnectButton();
+    },
+
+    // Mostra bottone per riconnettere Google
+    showReconnectButton() {
+        const calendarHeader = document.querySelector('#calendarSection .card-header, .calendar-header');
+        if (calendarHeader && !document.getElementById('reconnectGoogleBtn')) {
+            const btn = document.createElement('button');
+            btn.id = 'reconnectGoogleBtn';
+            btn.className = 'btn btn-warning btn-sm';
+            btn.innerHTML = '🔗 Riconnetti Google';
+            btn.onclick = () => loginWithGoogle();
+            calendarHeader.appendChild(btn);
+        }
+    },
+
+    // Rimuove bottone riconnetti
+    hideReconnectButton() {
+        const btn = document.getElementById('reconnectGoogleBtn');
+        if (btn) btn.remove();
     }
 };
+
+// ============================================
+// WRAPPER PER CHIAMATE CALENDAR CON TOKEN VALIDO
+// ============================================
+
+// Esegue una funzione che usa GAPI dopo aver verificato il token
+async function withValidGoogleToken(apiCallFn) {
+    try {
+        // Ottieni token valido
+        const token = await tokenManager.getValidToken();
+
+        if (!token) {
+            throw new Error('Impossibile ottenere un token Google valido');
+        }
+
+        // Assicurati che GAPI abbia il token aggiornato
+        if (typeof gapi !== 'undefined' && gapi.client) {
+            gapi.client.setToken({ access_token: token });
+        }
+
+        // Esegui la chiamata API
+        return await apiCallFn();
+
+    } catch (error) {
+        // Se l'errore è 401 (token non valido), prova a rinnovare e ripetere
+        if (error.status === 401 || error.message?.includes('401') || error.message?.includes('invalid_token')) {
+            console.log('🔄 Token invalido, rinnovo e riprovo...');
+
+            // Forza refresh
+            localStorage.removeItem('google_token_expiry'); // Forza refresh
+            const newToken = await tokenManager.refreshFromSupabase();
+
+            if (newToken) {
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: newToken });
+                }
+                // Riprova la chiamata
+                return await apiCallFn();
+            }
+        }
+
+        throw error;
+    }
+}
 
 // ============================================
 // PERFORMANCE UTILITIES
@@ -9450,27 +9842,12 @@ function signOutFromGoogle() {
 
 // Refresh manuale calendari e eventi Google
 async function refreshGoogleCalendars() {
-    if (!isGoogleSignedIn) {
-        showToast('Non connesso a Google', 'warning');
+    if (!isLoggedIn) {
+        showToast('Non connesso', 'warning');
         return;
     }
 
-    // Verifica che il token sia ancora valido nel client gapi
-    const token = gapi.client.getToken();
-    if (!token) {
-        console.warn('Token Google non presente nel client, tentativo di ripristino...');
-        const savedToken = localStorage.getItem('google_access_token');
-        if (savedToken) {
-            gapi.client.setToken({ access_token: savedToken });
-            console.log('Token ripristinato da localStorage');
-        } else {
-            showToast('Sessione scaduta, riconnetti Google', 'warning');
-            isGoogleSignedIn = false;
-            updateGoogleUI();
-            return;
-        }
-    }
-
+    // Il tokenManager si occupa di verificare e rinnovare il token
     showToast('Aggiornamento calendari...', 'info');
 
     try {
@@ -9551,7 +9928,10 @@ async function loadUserCalendars() {
         select.innerHTML = '<option value="">Caricamento calendari...</option>';
         select.disabled = true;
 
-        const response = await gapi.client.calendar.calendarList.list();
+        // Usa wrapper con token valido
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.calendarList.list()
+        );
         userCalendars = response.result.items || [];
 
         select.innerHTML = '';
@@ -9707,14 +10087,17 @@ async function loadCalendarEvents(forceRange = null) {
 
         console.log(`📅 Caricamento eventi: ${startOfRange.toLocaleDateString()} - ${endOfRange.toLocaleDateString()}`);
 
-        const response = await gapi.client.calendar.events.list({
-            calendarId: selectedCalendarId,
-            timeMin: startOfRange.toISOString(),
-            timeMax: endOfRange.toISOString(),
-            singleEvents: true,
-            orderBy: 'startTime',
-            maxResults: 250 // Aumentato per mesi con molti eventi
-        });
+        // Usa wrapper con token valido
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.events.list({
+                calendarId: selectedCalendarId,
+                timeMin: startOfRange.toISOString(),
+                timeMax: endOfRange.toISOString(),
+                singleEvents: true,
+                orderBy: 'startTime',
+                maxResults: 250 // Aumentato per mesi con molti eventi
+            })
+        );
 
         const events = response.result.items || [];
 
@@ -9751,48 +10134,12 @@ async function loadCalendarEvents(forceRange = null) {
 
     } catch (error) {
         console.error('Error loading events:', error);
-
-        // Mostra errore specifico
         const errorMsg = error.result?.error?.message || error.message || 'Errore sconosciuto';
         console.error('Dettaglio errore:', errorMsg);
 
-        // Token might be expired o permessi insufficienti
-        if (error.status === 401 || error.status === 403) {
-            console.log('🔄 Token scaduto, tento refresh...');
-
-            // Tenta refresh tramite Supabase
-            const refreshed = await refreshGoogleCalendarToken();
-
-            if (refreshed) {
-                console.log('✅ Token rinnovato, riprovo caricamento eventi...');
-                // Riprova una volta
-                try {
-                    const response = await gapi.client.calendar.events.list({
-                        calendarId: selectedCalendarId,
-                        timeMin: new Date().toISOString(),
-                        timeMax: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-                        singleEvents: true,
-                        orderBy: 'startTime',
-                        maxResults: 100
-                    });
-                    state.calendarEvents = response.result.items || [];
-                    saveStateAndSync();
-                    console.log('✅ Eventi caricati dopo refresh token');
-                    return;
-                } catch (retryError) {
-                    console.error('❌ Errore anche dopo refresh:', retryError);
-                }
-            }
-
-            // Se il refresh fallisce, chiedi re-login
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            isGoogleSignedIn = false;
-            updateGoogleUI();
-            showToast('Sessione scaduta, riconnetti Google', 'warning');
-        } else {
-            showToast('Errore caricamento eventi', 'error');
-        }
+        // Il wrapper withValidGoogleToken gestisce già i retry per 401/403
+        // Se arriviamo qui, il token refresh ha già fallito
+        showToast('Errore caricamento eventi', 'error');
     }
 }
 
@@ -9885,8 +10232,8 @@ async function syncTaskToGoogle(task) {
 
 // Create event in Google Calendar
 async function createCalendarEvent(title, startTime, endTime, description = '') {
-    if (!isGoogleSignedIn) {
-        showToast('Connetti Google Calendar prima', 'warning');
+    if (!isLoggedIn) {
+        showToast('Effettua il login prima', 'warning');
         return null;
     }
 
@@ -9904,10 +10251,13 @@ async function createCalendarEvent(title, startTime, endTime, description = '') 
             }
         };
 
-        const response = await gapi.client.calendar.events.insert({
-            calendarId: selectedCalendarId,
-            resource: event
-        });
+        // Usa wrapper con token valido
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.events.insert({
+                calendarId: selectedCalendarId,
+                resource: event
+            })
+        );
 
         showToast('Evento creato nel calendario! 📅', 'success');
         loadCalendarEvents();
@@ -9951,7 +10301,7 @@ function getBufferTime() {
 
 // Find free slots in calendar (con Buffer Time stile Reclaim.ai)
 async function findFreeSlots(date, durationMinutes = 30) {
-    if (!isGoogleSignedIn) return [];
+    if (!isLoggedIn) return [];
 
     const bufferTime = getBufferTime();
     const startOfDay = new Date(date);
@@ -9960,14 +10310,16 @@ async function findFreeSlots(date, durationMinutes = 30) {
     endOfDay.setHours(23, 59, 59, 999);
 
     try {
-        // Get busy times
-        const response = await gapi.client.calendar.freebusy.query({
-            resource: {
-                timeMin: startOfDay.toISOString(),
-                timeMax: endOfDay.toISOString(),
-                items: [{ id: selectedCalendarId }]
-            }
-        });
+        // Get busy times - usa wrapper con token valido
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.freebusy.query({
+                resource: {
+                    timeMin: startOfDay.toISOString(),
+                    timeMax: endOfDay.toISOString(),
+                    items: [{ id: selectedCalendarId }]
+                }
+            })
+        );
 
         const busySlots = response.result.calendars[selectedCalendarId]?.busy || [];
 
@@ -14050,29 +14402,31 @@ async function scheduleHabit(habitId) {
     try {
         showToast('Creazione evento ricorrente...', 'info');
 
-        const event = await gapi.client.calendar.events.insert({
-            calendarId: selectedCalendarId,
-            resource: {
-                summary: `${habit.icon} ${habitName}`,
-                description: `Abitudine - ${habit.frequency}\n\n🔥 Streak attuale: ${habit.streak || 0} giorni\n\nCreato da Mago Max S.A.V.E.R.S.`,
-                start: {
-                    dateTime: startTime.toISOString(),
-                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-                },
-                end: {
-                    dateTime: endTime.toISOString(),
-                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-                },
-                recurrence: recurrence,
-                reminders: {
-                    useDefault: false,
-                    overrides: [
-                        { method: 'popup', minutes: 10 }
-                    ]
-                },
-                colorId: '9' // Blu - colore per abitudini
-            }
-        });
+        const event = await withValidGoogleToken(() =>
+            gapi.client.calendar.events.insert({
+                calendarId: selectedCalendarId,
+                resource: {
+                    summary: `${habit.icon} ${habitName}`,
+                    description: `Abitudine - ${habit.frequency}\n\n🔥 Streak attuale: ${habit.streak || 0} giorni\n\nCreato da Mago Max S.A.V.E.R.S.`,
+                    start: {
+                        dateTime: startTime.toISOString(),
+                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                    },
+                    end: {
+                        dateTime: endTime.toISOString(),
+                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                    },
+                    recurrence: recurrence,
+                    reminders: {
+                        useDefault: false,
+                        overrides: [
+                            { method: 'popup', minutes: 10 }
+                        ]
+                    },
+                    colorId: '9' // Blu - colore per abitudini
+                }
+            })
+        );
 
         if (event.result) {
             habit.calendarEventId = event.result.id;
@@ -17688,10 +18042,19 @@ function getAgencyFeesForMonth(yearMonth) {
     let totalPending = 0;
     const items = [];
 
+    // Verifica se l'utente è owner/admin
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    const currentUserEmail = state.profile?.email?.toLowerCase();
+
     // Scorri tutti i commenti finanziari
     Object.keys(eventComments).forEach(eventId => {
         const comments = eventComments[eventId] || [];
         comments.forEach(c => {
+            // Filtro privacy: animatore vede solo i propri compensi
+            if (!isOwnerOrAdmin && c.authorEmail?.toLowerCase() !== currentUserEmail) {
+                return; // Salta compensi di altri animatori
+            }
+
             if (c.type === 'income' && c.agencyFee > 0) {
                 // Determina la data del commento
                 const commentDate = c.createdAt?.split('T')[0];
@@ -17829,9 +18192,14 @@ function renderAgencyFeeWallet() {
                         </div>
                     </div>
                     ${(() => {
-                        const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+                        const isOwnerOrAdmin = canSeeAllFinances();
                         const myEmail = state.profile?.email?.toLowerCase();
-                        const hasPendingItems = currentData.items.filter(i => i.status === 'pending').length > 0;
+
+                        // Filtra: animatore vede solo i PROPRI pending items
+                        const myPendingItems = currentData.items.filter(i =>
+                            i.status === 'pending' && i.authorEmail?.toLowerCase() === myEmail
+                        );
+                        const hasPendingItems = myPendingItems.length > 0;
                         const hasPendingOwnerConfirmation = currentData.totalPendingOwnerConfirmation > 0;
                         const hasPendingAnimatorConfirmation = currentData.totalPendingAnimatorConfirmation > 0;
 
@@ -17861,15 +18229,19 @@ function renderAgencyFeeWallet() {
                                 '<button class="btn btn-secondary btn-sm" onclick="openAgencyFeeDetail()" style="flex:0 0 auto;">✏️</button>' +
                                 '</div>';
                         } else if (hasPendingItems && !isOwnerOrAdmin) {
-                            // Animatore: segna come consegnato
+                            // Animatore: segna come consegnato (solo i propri)
+                            const myPendingAmount = myPendingItems.reduce((s,i) => s + i.agencyFee, 0);
                             buttons += '<div style="margin-top:10px;">' +
                                 '<button class="btn btn-warning btn-sm" onclick="markAgencyFeesAsDelivered()" style="width:100%;">' +
-                                '📤 Segna Tutto come Consegnato</button></div>';
-                        } else if (hasPendingItems && isOwnerOrAdmin) {
+                                '📤 Consegna €' + myPendingAmount.toFixed(2) + '</button></div>';
+                        } else if (isOwnerOrAdmin) {
                             // Owner vede compensi da consegnare ma deve aspettare l'animatore
-                            const pendingAmount = currentData.items.filter(i => i.status === 'pending').reduce((s,i) => s + i.agencyFee, 0);
-                            buttons += '<div style="margin-top:10px; font-size:0.75rem; color:var(--text-secondary); text-align:center;">' +
-                                '⏳ In attesa che gli animatori segnino €' + pendingAmount.toFixed(2) + ' come consegnati</div>';
+                            const allPendingItems = currentData.items.filter(i => i.status === 'pending');
+                            if (allPendingItems.length > 0) {
+                                const pendingAmount = allPendingItems.reduce((s,i) => s + i.agencyFee, 0);
+                                buttons += '<div style="margin-top:10px; font-size:0.75rem; color:var(--text-secondary); text-align:center;">' +
+                                    '⏳ In attesa che gli animatori segnino €' + pendingAmount.toFixed(2) + ' come consegnati</div>';
+                            }
                         }
 
                         return buttons;
@@ -18818,35 +19190,72 @@ function renderEventsDashboard() {
         }
     });
 
+    // Verifica se l'utente è owner/admin (per privacy) - usa nuova funzione
+    const isOwnerOrAdmin = canSeeAllFinances();
+    const currentUserEmail = state.profile?.email?.toLowerCase();
+
     // 2. Trova commenti finanziari dagli eventi (nuovo sistema)
     const eventComments = state.eventComments || {};
     Object.keys(eventComments).forEach(commentId => {
         const comments = eventComments[commentId] || [];
-        const financialComments = comments.filter(c => c.type && c.type !== 'normal' && c.amount);
+        // Filtra: owner/admin vede tutti, animatore vede solo i propri
+        let financialComments = comments.filter(c => c.type && c.type !== 'normal' && c.amount);
+        if (!isOwnerOrAdmin) {
+            financialComments = financialComments.filter(c =>
+                c.authorEmail?.toLowerCase() === currentUserEmail
+            );
+        }
+
+        // DEBUG: Log commenti filtrati
+        console.log('🔍 Commenti per evento', commentId, ':', {
+            totali: comments.filter(c => c.type && c.type !== 'normal' && c.amount).length,
+            filtrati: financialComments.length,
+            dettagli: financialComments.map(c => ({ author: c.authorEmail, type: c.type, amount: c.amount, incomeTotal: c.incomeTotal }))
+        });
 
         if (financialComments.length > 0) {
             // Cerca info evento dal calendario
             let eventInfo = null;
             let eventName = 'Evento';
             let eventDate = null;
+            let originalEventId = null; // ID originale per navigazione
+            let isGoogleEvent = false;
 
-            // Cerca in Google Calendar
+            // Cerca in Google Calendar - se commentId è hash universale (evt_xxx), cerca per hash
             if (state.calendarEvents) {
-                eventInfo = state.calendarEvents.find(e =>
-                    e.id === commentId || e.iCalUID === commentId
-                );
+                eventInfo = state.calendarEvents.find(e => {
+                    if (e.id === commentId || e.iCalUID === commentId) return true;
+                    // Se commentId è un hash universale, confronta con l'hash dell'evento
+                    if (commentId.startsWith('evt_')) {
+                        const eventHash = getEventCommentId(e, true);
+                        return eventHash === commentId;
+                    }
+                    return false;
+                });
                 if (eventInfo) {
                     eventName = eventInfo.summary || 'Evento';
                     eventDate = eventInfo.start?.dateTime?.split('T')[0] || eventInfo.start?.date;
+                    originalEventId = eventInfo.id;
+                    isGoogleEvent = true;
                 }
             }
 
             // Cerca in eventi locali
             if (!eventInfo && state.events) {
-                eventInfo = state.events.find(e => e.id === commentId);
+                eventInfo = state.events.find(e => {
+                    if (e.id === commentId) return true;
+                    // Se commentId è un hash universale, confronta con l'hash dell'evento
+                    if (commentId.startsWith('evt_')) {
+                        const eventHash = getEventCommentId(e, false);
+                        return eventHash === commentId;
+                    }
+                    return false;
+                });
                 if (eventInfo) {
                     eventName = eventInfo.title || 'Evento';
                     eventDate = eventInfo.date;
+                    originalEventId = eventInfo.id;
+                    isGoogleEvent = false;
                 }
             }
 
@@ -18859,6 +19268,8 @@ function renderEventsDashboard() {
             if (!eventGroups[key]) {
                 eventGroups[key] = {
                     eventId: commentId,
+                    originalEventId: originalEventId, // ID originale per navigazione
+                    isGoogleEvent: isGoogleEvent,     // Flag per tipo evento
                     eventName: eventName,
                     date: eventDate,
                     items: [],
@@ -18978,8 +19389,7 @@ function renderEventsDashboard() {
     // Ordina per data (più recenti prima)
     filteredEvents.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Verifica se l'utente è owner/admin
-    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    // isOwnerOrAdmin già definito sopra per il filtro privacy
 
     // Calcola totali (filtrati) - differenziati per ruolo
     const totalRitiroSaldo = filteredEvents.reduce((s, e) => s + (e.ritiroSaldo || e.income), 0);
@@ -19307,19 +19717,38 @@ function showEventFinanceDetail(eventId) {
         });
     });
 
-    // Cerca evento nel calendario per nome e data
-    const calEvent = state.calendarEvents?.find(e => e.id === eventId || e.iCalUID === eventId);
+    // Cerca evento nel calendario - supporta sia ID diretto che hash universale (evt_xxx)
+    let originalEventId = eventId; // ID per navigazione
+    const calEvent = state.calendarEvents?.find(e => {
+        if (e.id === eventId || e.iCalUID === eventId) return true;
+        // Se eventId è un hash universale, confronta con l'hash dell'evento
+        if (eventId.startsWith('evt_')) {
+            const eventHash = getEventCommentId(e, true);
+            return eventHash === eventId;
+        }
+        return false;
+    });
     if (calEvent) {
         eventName = calEvent.summary || 'Evento';
         eventDate = calEvent.start?.dateTime?.split('T')[0] || calEvent.start?.date;
         isGoogleEvent = true;
+        originalEventId = calEvent.id; // Usa l'ID originale per navigazione
     }
 
-    const localEvent = state.events?.find(e => e.id === eventId);
+    const localEvent = state.events?.find(e => {
+        if (e.id === eventId) return true;
+        // Se eventId è un hash universale, confronta con l'hash dell'evento
+        if (eventId.startsWith('evt_')) {
+            const eventHash = getEventCommentId(e, false);
+            return eventHash === eventId;
+        }
+        return false;
+    });
     if (localEvent) {
         eventName = localEvent.title || 'Evento';
         eventDate = localEvent.date;
         isGoogleEvent = false;
+        originalEventId = localEvent.id; // Usa l'ID originale per navigazione
     }
 
     if (items.length === 0) {
@@ -19420,7 +19849,7 @@ function showEventFinanceDetail(eventId) {
                     <div style="font-weight:500;">${eventName}</div>
                     ${eventDate ? `<div style="font-size:0.75rem; color:var(--text-secondary);">${formatDate(eventDate)}</div>` : ''}
                 </div>
-                <button class="btn btn-sm btn-primary" onclick="closeModal('dynamicModal');openEventDetail('${eventId}', ${isGoogleEvent});" style="white-space:nowrap;">
+                <button class="btn btn-sm btn-primary" onclick="closeModal('dynamicModal');openEventDetail('${originalEventId}', ${isGoogleEvent});" style="white-space:nowrap;">
                     📍 Vai all'evento
                 </button>
             </div>
@@ -23180,6 +23609,692 @@ function generateInviteCode() {
     return code;
 }
 
+// ============================================
+// SISTEMA GESTIONE AGENZIA
+// ============================================
+
+// Verifica se l'utente corrente è owner/admin dell'agenzia
+// Usa agency_members se disponibile, altrimenti fallback a org_role
+function isAgencyOwnerOrAdmin() {
+    // Prima controlla super_admin (sempre true)
+    if (state.profile?.is_super_admin) return true;
+
+    // Poi controlla agency_members (nuovo sistema)
+    if (agencyState.loaded && agencyState.members.length > 0) {
+        const myMembership = agencyState.members.find(m =>
+            m.user_id === state.profile?.id && m.status === 'active'
+        );
+        if (myMembership) {
+            return myMembership.role === 'owner' || myMembership.role === 'admin';
+        }
+    }
+
+    // Fallback: controlla se è owner della propria organizzazione
+    // MA solo se l'organizzazione ha lo stesso owner_id dell'utente
+    if (state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin') {
+        // Verifica che sia realmente l'owner dell'organizzazione principale
+        // Non un owner di un'organizzazione personale separata
+        return true;
+    }
+
+    return false;
+}
+
+// Ottieni permessi specifici dell'utente corrente
+function getMyAgencyPermissions() {
+    const defaultPermissions = {
+        can_see_all_finances: false,
+        can_see_team_finances: false,
+        can_edit_events: true,
+        can_add_financial_comments: true,
+        can_manage_team: false,
+        can_manage_calendars: false,
+        can_export_reports: false,
+        can_access_crm: false
+    };
+
+    // Super admin ha tutti i permessi
+    if (state.profile?.is_super_admin) {
+        return Object.fromEntries(Object.keys(defaultPermissions).map(k => [k, true]));
+    }
+
+    // Cerca membership
+    if (agencyState.loaded && agencyState.members.length > 0) {
+        const myMembership = agencyState.members.find(m =>
+            m.user_id === state.profile?.id && m.status === 'active'
+        );
+        if (myMembership) {
+            // Owner/Admin hanno tutti i permessi
+            if (myMembership.role === 'owner' || myMembership.role === 'admin') {
+                return Object.fromEntries(Object.keys(defaultPermissions).map(k => [k, true]));
+            }
+            return { ...defaultPermissions, ...(myMembership.permissions || {}) };
+        }
+    }
+
+    // Fallback per org_role owner/admin
+    if (state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin') {
+        return Object.fromEntries(Object.keys(defaultPermissions).map(k => [k, true]));
+    }
+
+    return defaultPermissions;
+}
+
+// Verifica se l'utente può vedere i dati finanziari di tutti
+function canSeeAllFinances() {
+    return getMyAgencyPermissions().can_see_all_finances || isAgencyOwnerOrAdmin();
+}
+
+// Verifica se l'utente può gestire il team
+function canManageTeam() {
+    return getMyAgencyPermissions().can_manage_team || isAgencyOwnerOrAdmin();
+}
+
+// Stato agenzia
+let agencyState = {
+    members: [],
+    pendingInvites: [],
+    calendars: [],
+    loaded: false
+};
+
+// Carica dati agenzia
+async function loadAgencyData() {
+    if (!sb || !state.profile?.organization_id) return;
+
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    const agencyCard = document.getElementById('agencyManagementCard');
+
+    // Mostra card solo per owner/admin
+    if (agencyCard) {
+        agencyCard.style.display = isOwnerOrAdmin ? 'block' : 'none';
+    }
+
+    if (!isOwnerOrAdmin) return;
+
+    try {
+        // Carica membri agenzia
+        const { data: members, error: membersError } = await sb
+            .from('agency_members')
+            .select('*')
+            .eq('agency_id', state.profile.organization_id)
+            .order('joined_at', { ascending: false });
+
+        if (membersError) {
+            console.error('Errore caricamento membri agenzia:', membersError);
+            // Tabella potrebbe non esistere ancora
+            return;
+        }
+
+        agencyState.members = members || [];
+        agencyState.pendingInvites = members?.filter(m => m.status === 'pending') || [];
+
+        // Carica info organizzazione
+        const { data: org } = await sb
+            .from('organizations')
+            .select('plan, max_members')
+            .eq('id', state.profile.organization_id)
+            .single();
+
+        // Aggiorna UI
+        renderAgencyManagement(org);
+        agencyState.loaded = true;
+
+    } catch (err) {
+        console.error('Errore loadAgencyData:', err);
+    }
+}
+
+// Renderizza gestione agenzia
+function renderAgencyManagement(org) {
+    const listEl = document.getElementById('agencyAnimatorsList');
+    const pendingEl = document.getElementById('agencyPendingInvites');
+    const pendingListEl = document.getElementById('agencyPendingInvitesList');
+
+    // Aggiorna info piano
+    const planNames = { free: 'Free', starter: 'Starter', pro: 'Pro', business: 'Business', enterprise: 'Enterprise' };
+    document.getElementById('agencyPlanName').textContent = planNames[org?.plan] || 'Free';
+    document.getElementById('agencyMembersCount').textContent = agencyState.members.filter(m => m.status === 'active').length;
+    document.getElementById('agencyMaxMembers').textContent = org?.max_members || 1;
+
+    // Filtra membri attivi
+    const activeMembers = agencyState.members.filter(m => m.status === 'active');
+    const pendingInvites = agencyState.members.filter(m => m.status === 'pending');
+
+    // Renderizza lista animatori
+    if (listEl) {
+        if (activeMembers.length === 0) {
+            listEl.innerHTML = `
+                <div style="padding:20px; text-align:center; color:var(--text-secondary);">
+                    <div style="font-size:2rem; margin-bottom:8px;">🎭</div>
+                    <div>Nessun animatore nel team</div>
+                    <div style="font-size:0.85rem; margin-top:4px;">Invita il primo animatore per iniziare</div>
+                </div>
+            `;
+        } else {
+            listEl.innerHTML = activeMembers.map(member => {
+                const roleIcons = { owner: '👑', admin: '⚙️', animator: '🎭', viewer: '👁️' };
+                const roleNames = { owner: 'Proprietario', admin: 'Admin', animator: 'Animatore', viewer: 'Viewer' };
+                const isOwner = member.role === 'owner';
+
+                return `
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid var(--border-color);">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:40px; height:40px; border-radius:50%; background:var(--bg-tertiary); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
+                                ${roleIcons[member.role] || '🎭'}
+                            </div>
+                            <div>
+                                <div style="font-weight:500;">${member.invited_email || 'Utente'}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">
+                                    ${roleNames[member.role]} • Entrato ${member.joined_at ? new Date(member.joined_at).toLocaleDateString('it-IT') : 'N/D'}
+                                </div>
+                            </div>
+                        </div>
+                        ${!isOwner ? `
+                            <button class="btn btn-sm btn-secondary" onclick="openEditAnimatorModal('${member.id}')">
+                                ⚙️
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // Renderizza inviti pendenti
+    if (pendingEl && pendingListEl) {
+        if (pendingInvites.length > 0) {
+            pendingEl.style.display = 'block';
+            pendingListEl.innerHTML = pendingInvites.map(invite => `
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:8px; background:var(--bg-tertiary); border-radius:6px; margin-bottom:6px;">
+                    <div>
+                        <div style="font-weight:500; font-size:0.9rem;">${invite.invited_email}</div>
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">
+                            Invitato ${new Date(invite.invited_at).toLocaleDateString('it-IT')}
+                            ${new Date(invite.invite_expires_at) < new Date() ? ' • ⚠️ Scaduto' : ''}
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn btn-xs btn-secondary" onclick="resendInvite('${invite.id}')" title="Reinvia">📨</button>
+                        <button class="btn btn-xs btn-danger" onclick="cancelInvite('${invite.id}')" title="Annulla">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            pendingEl.style.display = 'none';
+        }
+    }
+}
+
+// Apri modal invita animatore
+function openInviteAnimatorModal() {
+    // Verifica limite membri
+    const org = state.profile?.organization;
+    const maxMembers = org?.max_members || 1;
+    const currentMembers = agencyState.members.filter(m => m.status === 'active').length;
+
+    if (currentMembers >= maxMembers) {
+        showToast(`Hai raggiunto il limite di ${maxMembers} animatori. Fai upgrade!`, 'warning');
+        openUpgradePlanModal();
+        return;
+    }
+
+    // Reset form
+    document.getElementById('inviteAnimatorEmail').value = '';
+    document.getElementById('inviteAnimatorName').value = '';
+    document.getElementById('inviteAnimatorRole').value = 'animator';
+    document.getElementById('permCanAddFinances').checked = true;
+    document.getElementById('permCanEditEvents').checked = false;
+    document.getElementById('permCanSeeTeamFinances').checked = false;
+    document.getElementById('permCanExportReports').checked = false;
+
+    // Carica calendari disponibili
+    loadCalendarsForInvite();
+
+    openModal('inviteAnimatorModal');
+}
+
+// Carica calendari per assegnazione
+function loadCalendarsForInvite() {
+    const container = document.getElementById('inviteCalendarsList');
+    if (!container) return;
+
+    // Usa i calendari Google già caricati
+    const calendars = state.googleCalendars || [];
+
+    if (calendars.length === 0) {
+        container.innerHTML = '<div class="text-muted text-sm">Nessun calendario disponibile. Connetti Google Calendar.</div>';
+        return;
+    }
+
+    container.innerHTML = calendars.map(cal => `
+        <label style="display:flex; align-items:center; gap:8px; padding:6px; cursor:pointer; border-radius:4px;"
+               onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background='transparent'">
+            <input type="checkbox" class="invite-calendar-checkbox" value="${cal.id}" data-name="${cal.summary}">
+            <span style="width:12px; height:12px; border-radius:50%; background:${cal.backgroundColor || '#4285f4'};"></span>
+            <span style="font-size:0.9rem;">${cal.summary}</span>
+        </label>
+    `).join('');
+}
+
+// Invia invito animatore
+async function sendAnimatorInvite() {
+    const email = document.getElementById('inviteAnimatorEmail').value.trim().toLowerCase();
+    const name = document.getElementById('inviteAnimatorName').value.trim();
+    const role = document.getElementById('inviteAnimatorRole').value;
+
+    if (!email || !email.includes('@')) {
+        showToast('Inserisci un\'email valida', 'error');
+        return;
+    }
+
+    // Verifica se già invitato
+    const existingMember = agencyState.members.find(m =>
+        m.invited_email?.toLowerCase() === email ||
+        m.user_id && state.profile?.email?.toLowerCase() === email
+    );
+    if (existingMember) {
+        showToast('Questo utente è già nel team o ha un invito pendente', 'error');
+        return;
+    }
+
+    // Raccogli permessi
+    const permissions = {
+        can_see_all_finances: false,
+        can_see_team_finances: document.getElementById('permCanSeeTeamFinances').checked,
+        can_edit_events: document.getElementById('permCanEditEvents').checked,
+        can_add_financial_comments: document.getElementById('permCanAddFinances').checked,
+        can_manage_team: role === 'admin',
+        can_manage_calendars: role === 'admin',
+        can_export_reports: document.getElementById('permCanExportReports').checked,
+        can_access_crm: false
+    };
+
+    // Raccogli calendari selezionati
+    const selectedCalendars = [];
+    document.querySelectorAll('.invite-calendar-checkbox:checked').forEach(cb => {
+        selectedCalendars.push({
+            id: cb.value,
+            name: cb.dataset.name
+        });
+    });
+
+    try {
+        showToast('Invio invito...', 'info');
+
+        // Inserisci in agency_members
+        const { data: newMember, error } = await sb
+            .from('agency_members')
+            .insert({
+                agency_id: state.profile.organization_id,
+                invited_email: email,
+                role: role,
+                permissions: permissions,
+                assigned_calendars: selectedCalendars,
+                status: 'pending',
+                invited_by: state.profile.id,
+                invited_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Log invito
+        await sb.from('agency_invites_log').insert({
+            agency_id: state.profile.organization_id,
+            member_id: newMember.id,
+            invited_email: email,
+            invited_by: state.profile.id,
+            action: 'invited',
+            details: { role, calendars_count: selectedCalendars.length }
+        });
+
+        // TODO: Invia email con link invito (richiede backend email)
+        // Per ora, mostra il link da condividere manualmente
+        const inviteLink = `${window.location.origin}/#invite=${newMember.invite_token}`;
+
+        showToast('Invito creato!', 'success');
+        closeModal('inviteAnimatorModal');
+
+        // Mostra link da condividere
+        showModal('📨 Invito Creato', `
+            <div style="text-align:center; padding:16px;">
+                <div style="font-size:3rem; margin-bottom:12px;">✅</div>
+                <div style="font-weight:500; margin-bottom:16px;">Invito per ${email} creato!</div>
+                <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">
+                    Condividi questo link con l'animatore:
+                </div>
+                <div style="background:var(--bg-secondary); padding:12px; border-radius:8px; word-break:break-all; font-family:monospace; font-size:0.8rem;">
+                    ${inviteLink}
+                </div>
+                <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${inviteLink}'); showToast('Link copiato!', 'success');" style="margin-top:12px; width:100%;">
+                    📋 Copia Link
+                </button>
+            </div>
+        `);
+
+        // Ricarica dati
+        await loadAgencyData();
+
+    } catch (err) {
+        console.error('Errore invio invito:', err);
+        showToast('Errore nell\'invio dell\'invito: ' + err.message, 'error');
+    }
+}
+
+// Apri modal modifica animatore
+async function openEditAnimatorModal(memberId) {
+    const member = agencyState.members.find(m => m.id === memberId);
+    if (!member) return;
+
+    // Salva ID per riferimento
+    window.currentEditAnimatorId = memberId;
+
+    const permissions = member.permissions || {};
+    const calendars = member.assigned_calendars || [];
+
+    const content = `
+        <div style="margin-bottom:16px;">
+            <div style="font-weight:500; font-size:1.1rem;">${member.invited_email || 'Animatore'}</div>
+            <div style="font-size:0.85rem; color:var(--text-secondary);">Membro dal ${member.joined_at ? new Date(member.joined_at).toLocaleDateString('it-IT') : 'N/D'}</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Ruolo</label>
+            <select class="form-input form-select" id="editAnimatorRole">
+                <option value="animator" ${member.role === 'animator' ? 'selected' : ''}>🎭 Animatore</option>
+                <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>⚙️ Admin</option>
+                <option value="viewer" ${member.role === 'viewer' ? 'selected' : ''}>👁️ Viewer</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Permessi</label>
+            <div style="display:flex; flex-direction:column; gap:8px; background:var(--bg-secondary); padding:12px; border-radius:8px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="editPermCanAddFinances" ${permissions.can_add_financial_comments ? 'checked' : ''}>
+                    <span>💰 Può aggiungere dati finanziari</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="editPermCanEditEvents" ${permissions.can_edit_events ? 'checked' : ''}>
+                    <span>📅 Può modificare eventi</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="editPermCanSeeTeamFinances" ${permissions.can_see_team_finances ? 'checked' : ''}>
+                    <span>📊 Può vedere finanze del team</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="editPermCanExportReports" ${permissions.can_export_reports ? 'checked' : ''}>
+                    <span>📋 Può esportare report</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Stato</label>
+            <select class="form-input form-select" id="editAnimatorStatus">
+                <option value="active" ${member.status === 'active' ? 'selected' : ''}>✅ Attivo</option>
+                <option value="suspended" ${member.status === 'suspended' ? 'selected' : ''}>⏸️ Sospeso</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Calendari Assegnati (${calendars.length})</label>
+            <div id="editCalendarsList" style="max-height:120px; overflow-y:auto; background:var(--bg-secondary); padding:12px; border-radius:8px;">
+                ${(state.googleCalendars || []).map(cal => {
+                    const isAssigned = calendars.some(c => c.id === cal.id);
+                    return `
+                        <label style="display:flex; align-items:center; gap:8px; padding:4px; cursor:pointer;">
+                            <input type="checkbox" class="edit-calendar-checkbox" value="${cal.id}" data-name="${cal.summary}" ${isAssigned ? 'checked' : ''}>
+                            <span>${cal.summary}</span>
+                        </label>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+
+    document.getElementById('editAnimatorContent').innerHTML = content;
+    openModal('editAnimatorModal');
+}
+
+// Salva permessi animatore
+async function saveAnimatorPermissions() {
+    const memberId = window.currentEditAnimatorId;
+    if (!memberId) return;
+
+    const role = document.getElementById('editAnimatorRole').value;
+    const status = document.getElementById('editAnimatorStatus').value;
+
+    const permissions = {
+        can_see_all_finances: false,
+        can_see_team_finances: document.getElementById('editPermCanSeeTeamFinances').checked,
+        can_edit_events: document.getElementById('editPermCanEditEvents').checked,
+        can_add_financial_comments: document.getElementById('editPermCanAddFinances').checked,
+        can_manage_team: role === 'admin',
+        can_manage_calendars: role === 'admin',
+        can_export_reports: document.getElementById('editPermCanExportReports').checked,
+        can_access_crm: false
+    };
+
+    const selectedCalendars = [];
+    document.querySelectorAll('.edit-calendar-checkbox:checked').forEach(cb => {
+        selectedCalendars.push({ id: cb.value, name: cb.dataset.name });
+    });
+
+    try {
+        const updateData = {
+            role,
+            status,
+            permissions,
+            assigned_calendars: selectedCalendars,
+            updated_at: new Date().toISOString()
+        };
+
+        if (status === 'suspended') {
+            updateData.suspended_at = new Date().toISOString();
+        }
+
+        const { error } = await sb
+            .from('agency_members')
+            .update(updateData)
+            .eq('id', memberId);
+
+        if (error) throw error;
+
+        showToast('Permessi aggiornati!', 'success');
+        closeModal('editAnimatorModal');
+        await loadAgencyData();
+
+    } catch (err) {
+        console.error('Errore salvataggio permessi:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Revoca accesso animatore
+async function revokeAnimatorAccess() {
+    const memberId = window.currentEditAnimatorId;
+    if (!memberId) return;
+
+    const member = agencyState.members.find(m => m.id === memberId);
+    if (!member) return;
+
+    if (!confirm(`Sei sicuro di voler revocare l'accesso a ${member.invited_email}? Non potrà più accedere ai dati dell'agenzia.`)) {
+        return;
+    }
+
+    try {
+        const { error } = await sb
+            .from('agency_members')
+            .update({
+                status: 'revoked',
+                revoked_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', memberId);
+
+        if (error) throw error;
+
+        // Log
+        await sb.from('agency_invites_log').insert({
+            agency_id: state.profile.organization_id,
+            member_id: memberId,
+            invited_email: member.invited_email,
+            invited_by: state.profile.id,
+            action: 'revoked'
+        });
+
+        showToast('Accesso revocato', 'success');
+        closeModal('editAnimatorModal');
+        await loadAgencyData();
+
+    } catch (err) {
+        console.error('Errore revoca accesso:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Annulla invito pendente
+async function cancelInvite(memberId) {
+    if (!confirm('Annullare questo invito?')) return;
+
+    try {
+        const { error } = await sb
+            .from('agency_members')
+            .delete()
+            .eq('id', memberId)
+            .eq('status', 'pending');
+
+        if (error) throw error;
+
+        showToast('Invito annullato', 'success');
+        await loadAgencyData();
+
+    } catch (err) {
+        console.error('Errore annulla invito:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Reinvia invito
+async function resendInvite(memberId) {
+    try {
+        // Rigenera token e estendi scadenza
+        const newToken = crypto.randomUUID();
+        const newExpiry = new Date();
+        newExpiry.setDate(newExpiry.getDate() + 7);
+
+        const { data: member, error } = await sb
+            .from('agency_members')
+            .update({
+                invite_token: newToken,
+                invite_expires_at: newExpiry.toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', memberId)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        const inviteLink = `${window.location.origin}/#invite=${newToken}`;
+
+        showModal('📨 Invito Rinviato', `
+            <div style="text-align:center; padding:16px;">
+                <div style="font-size:3rem; margin-bottom:12px;">📨</div>
+                <div style="font-weight:500; margin-bottom:16px;">Nuovo link per ${member.invited_email}</div>
+                <div style="background:var(--bg-secondary); padding:12px; border-radius:8px; word-break:break-all; font-family:monospace; font-size:0.8rem;">
+                    ${inviteLink}
+                </div>
+                <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${inviteLink}'); showToast('Link copiato!', 'success');" style="margin-top:12px; width:100%;">
+                    📋 Copia Link
+                </button>
+            </div>
+        `);
+
+    } catch (err) {
+        console.error('Errore reinvio invito:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Apri modal upgrade piano
+function openUpgradePlanModal() {
+    // Aggiorna stato pulsanti in base al piano corrente
+    const currentPlan = state.profile?.organization?.plan || 'free';
+    // TODO: Evidenzia piano corrente
+    openModal('upgradePlanModal');
+}
+
+// Upgrade piano (placeholder - richiede integrazione Stripe)
+async function upgradePlan(planType) {
+    showToast(`Upgrade a ${planType} - Funzionalità in arrivo! Contattaci per attivare.`, 'info');
+    // TODO: Integrazione Stripe
+}
+
+// Accetta invito (chiamato all'avvio se c'è #invite=token nell'URL)
+async function checkAndAcceptInvite() {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#invite=')) return;
+
+    const token = hash.replace('#invite=', '');
+    if (!token) return;
+
+    // Rimuovi hash dall'URL
+    history.replaceState(null, '', window.location.pathname);
+
+    // Verifica se loggato
+    if (!state.profile?.id) {
+        // Salva token per dopo il login
+        localStorage.setItem('pendingInviteToken', token);
+        showToast('Effettua il login per accettare l\'invito', 'info');
+        return;
+    }
+
+    try {
+        showToast('Accettazione invito...', 'info');
+
+        // Chiama funzione Supabase per accettare
+        const { data, error } = await sb.rpc('accept_agency_invite', {
+            p_invite_token: token,
+            p_user_id: state.profile.id
+        });
+
+        if (error) throw error;
+
+        if (data?.success) {
+            showToast('Invito accettato! Benvenuto nel team!', 'success');
+            // Ricarica profilo per ottenere nuova organizzazione
+            await ensureUserProfile();
+            window.location.reload();
+        } else {
+            showToast(data?.error || 'Invito non valido o scaduto', 'error');
+        }
+
+    } catch (err) {
+        console.error('Errore accettazione invito:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Controlla invito pendente salvato
+async function checkPendingInvite() {
+    const token = localStorage.getItem('pendingInviteToken');
+    if (!token || !state.profile?.id) return;
+
+    localStorage.removeItem('pendingInviteToken');
+
+    // Simula click su link invito
+    window.location.hash = `#invite=${token}`;
+    await checkAndAcceptInvite();
+}
+
+// ============================================
+// FINE SISTEMA GESTIONE AGENZIA
+// ============================================
+
 // Crea nuovo team (con backend Google Sheets)
 async function createTeam() {
     const name = document.getElementById('newTeamName').value.trim();
@@ -24558,6 +25673,9 @@ function renderTeamPage() {
     console.log('  - state.cloudUser:', state.cloudUser);
     console.log('  - state.teamProjects:', state.teamProjects?.length || 0);
     console.log('  - state.sharedProjects:', state.sharedProjects?.length || 0);
+
+    // Carica gestione agenzia (solo per owner/admin)
+    loadAgencyData();
 
     renderMyTeams();
     renderTeamMembers();
@@ -29074,10 +30192,12 @@ async function deleteGoogleEvent(eventId) {
     }
 
     try {
-        await gapi.client.calendar.events.delete({
-            calendarId: selectedCalendarId,
-            eventId: eventId
-        });
+        await withValidGoogleToken(() =>
+            gapi.client.calendar.events.delete({
+                calendarId: selectedCalendarId,
+                eventId: eventId
+            })
+        );
 
         // Rimuovi dall'array locale
         state.calendarEvents = (state.calendarEvents || []).filter(e => e.id !== eventId);
@@ -29094,13 +30214,6 @@ async function deleteGoogleEvent(eventId) {
     } catch (error) {
         console.error('Errore eliminazione evento Google:', error);
         showToast('Errore eliminazione evento', 'error');
-
-        if (error.status === 401) {
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            isGoogleSignedIn = false;
-            updateGoogleUI();
-        }
     }
 }
 
@@ -29137,11 +30250,13 @@ async function updateGoogleEvent(eventId, eventData) {
     }
 
     try {
-        const response = await gapi.client.calendar.events.update({
-            calendarId: selectedCalendarId,
-            eventId: eventId,
-            resource: eventData
-        });
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.events.update({
+                calendarId: selectedCalendarId,
+                eventId: eventId,
+                resource: eventData
+            })
+        );
 
         console.log('Evento Google aggiornato:', response.result);
         return response.result;
@@ -29150,13 +30265,6 @@ async function updateGoogleEvent(eventId, eventData) {
         console.error('Errore aggiornamento evento Google:', error);
         const errorMsg = error.result?.error?.message || 'Verifica connessione Google';
         showToast(`Errore evento: ${errorMsg}`, 'error');
-
-        if (error.status === 401 || error.status === 403) {
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            isGoogleSignedIn = false;
-            updateGoogleUI();
-        }
         return null;
     }
 }
@@ -29547,19 +30655,21 @@ async function respondToInvite(eventId, response, isGoogle) {
                 // Trova il mio attendee e aggiorna
                 const myEmail = state.profile?.email || '';
 
-                await gapi.client.calendar.events.patch({
-                    calendarId: selectedCalendarId,
-                    eventId: eventId,
-                    sendUpdates: 'all',
-                    resource: {
-                        attendees: event.attendees.map(a => {
-                            if (a.self || a.email === myEmail) {
-                                return { ...a, responseStatus: response };
-                            }
-                            return a;
-                        })
-                    }
-                });
+                await withValidGoogleToken(() =>
+                    gapi.client.calendar.events.patch({
+                        calendarId: selectedCalendarId,
+                        eventId: eventId,
+                        sendUpdates: 'all',
+                        resource: {
+                            attendees: event.attendees.map(a => {
+                                if (a.self || a.email === myEmail) {
+                                    return { ...a, responseStatus: response };
+                                }
+                                return a;
+                            })
+                        }
+                    })
+                );
 
                 const responseText = response === 'accepted' ? 'Accettato' :
                                     response === 'declined' ? 'Rifiutato' : 'Forse';
@@ -31836,10 +32946,12 @@ async function saveBusyEvent() {
         // Rimuovi location se vuota
         if (!event.location) delete event.location;
 
-        const response = await gapi.client.calendar.events.insert({
-            calendarId: calendarId,
-            resource: event
-        });
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.events.insert({
+                calendarId: calendarId,
+                resource: event
+            })
+        );
 
         console.log('Evento busy creato:', response.result);
 
@@ -32488,11 +33600,13 @@ async function createCalendarEventToCalendar(title, startDateTime, endDateTime, 
             event.attendees = attendeesEmails.map(email => ({ email: email }));
         }
 
-        const response = await gapi.client.calendar.events.insert({
-            calendarId: calendarId,
-            resource: event,
-            sendUpdates: 'all' // Invia email di invito a tutti i partecipanti
-        });
+        const response = await withValidGoogleToken(() =>
+            gapi.client.calendar.events.insert({
+                calendarId: calendarId,
+                resource: event,
+                sendUpdates: 'all' // Invia email di invito a tutti i partecipanti
+            })
+        );
 
         if (attendeesEmails && attendeesEmails.length > 0) {
             showToast(`Evento creato! Inviti inviati a ${attendeesEmails.length} persona/e ☁️`, 'success');

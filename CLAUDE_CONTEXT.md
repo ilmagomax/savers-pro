@@ -1,7 +1,52 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-29 - Sistema Compensi Agenzia per Animatori
+> Aggiornato: 2026-01-29 - Autenticazione Unificata Google + Supabase
 
 ## STATO PROGETTO ATTUALE
+
+### Sistema Auth Unificato (COMPLETATO 2026-01-29)
+
+Il sistema di autenticazione è stato completamente riscritto per gestire il refresh automatico del token Google attraverso Supabase.
+
+#### Architettura Token Unificata
+```javascript
+// tokenManager (~riga 7159)
+const tokenManager = {
+    init()                    // Avvia controllo periodico + event listeners
+    getValidToken()           // Restituisce token valido, rinnovandolo se necessario
+    checkAndRefresh()         // Verifica scadenza e rinnova preventivamente
+    refreshFromSupabase()     // Ottiene nuovo token da Supabase session
+    handleAuthError()         // Gestisce errori auth
+    showReconnectButton()     // Mostra pulsante riconnessione
+};
+
+// Wrapper per chiamate GAPI (~riga 7369)
+async function withValidGoogleToken(apiCallFn) {
+    // 1. Ottiene token valido da tokenManager
+    // 2. Aggiorna GAPI con il token
+    // 3. Esegue la chiamata API
+    // 4. Se 401, rinnova token e riprova automaticamente
+}
+```
+
+#### Flusso Token
+1. L'utente fa login con Google tramite Supabase
+2. Supabase salva `provider_token` nella sessione
+3. `tokenManager.init()` avvia controllo ogni 5 minuti
+4. Prima di ogni chiamata GAPI, `withValidGoogleToken()` verifica/rinnova il token
+5. Se il token è in scadenza (<5 min), viene rinnovato preventivamente
+6. Se scaduto, viene fatto refresh tramite `sb.auth.refreshSession()`
+
+#### Tutte le chiamate GAPI ora usano il wrapper:
+- `loadUserCalendars()` - Lista calendari
+- `loadCalendarEvents()` - Lista eventi
+- `createCalendarEvent()` - Crea evento
+- `deleteGoogleEvent()` - Elimina evento
+- `updateGoogleEvent()` - Aggiorna evento
+- `respondToInvite()` - Risponde a invito
+- `saveBusyEvent()` - Salva non disponibilità
+- `createCalendarEventToCalendar()` - Crea con invitati
+- `findFreeSlots()` - Cerca slot liberi
+- `scheduleHabitToCalendar()` - Schedula abitudine
 
 ### Sistema Compensi Agenzia (IN LAVORAZIONE)
 
@@ -92,14 +137,45 @@ Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
 4. **Owner vede tutti i commenti** - Aggiunto check `isOwnerOrAdmin` in `canSeeFinancialComment()`
 5. **Owner può sempre editare** - Rimosso limite 5 minuti per owner/admin
 6. **Eventi duplicati** - Hash universale basato su titolo+data/ora (senza organizer)
+7. **Privacy dashboard Feste & Eventi** - Animatore vede solo propri commenti finanziari (non quelli degli altri)
+8. **Navigazione "Vai all'evento"** - Fix ricerca evento tramite hash universale + uso `originalEventId` per navigazione
+9. **Sistema Agenzia completo** - Nuove tabelle `agency_members`, `agency_calendar_access`, gestione inviti/permessi
+
+### Sistema Agenzia (NUOVO!)
+
+**File SQL**: `sql/09-agency-system.sql`
+
+**Tabelle**:
+- `agency_members` - Membri dell'agenzia con ruoli e permessi granulari
+- `agency_calendar_access` - Calendari assegnati a ogni membro
+- `agency_invites_log` - Log di inviti/revoche per audit
+
+**Funzioni JS chiave**:
+- `isAgencyOwnerOrAdmin()` - Verifica se utente è owner/admin
+- `canSeeAllFinances()` - Verifica permesso vedere tutti i dati finanziari
+- `getMyAgencyPermissions()` - Ottiene permessi granulari dell'utente
+- `loadAgencyData()` - Carica membri e inviti
+- `sendAnimatorInvite()` - Invia invito a nuovo animatore
+- `checkAndAcceptInvite()` - Accetta invito da URL (#invite=token)
+
+**Flusso**:
+1. Capo agenzia va su TEAM > Gestione Agenzia
+2. Clicca "Invita Animatore", inserisce email e permessi
+3. Riceve link da condividere
+4. Animatore clicca link, accetta invito
+5. Animatore vede solo i calendari assegnati e i propri dati finanziari
 
 ### Da Completare / Testare
 
+- [ ] **ESEGUIRE SQL**: `sql/09-agency-system.sql` su Supabase
+- [x] **Autenticazione unificata** - Token Google rinnovato tramite Supabase (COMPLETATO)
 - [ ] Verificare unificazione commenti su eventi duplicati
 - [ ] Testare flusso completo consegna compensi
 - [ ] Testare modifica importo da owner e accetta/rifiuta da animatore
-- [ ] Click su evento dalla dashboard Feste & Eventi
+- [x] Click su evento dalla dashboard Feste & Eventi (FIXATO)
 - [ ] Eventuale migrazione commenti vecchi con ID sbagliato
+- [ ] Testare sistema inviti agenzia
+- [ ] Integrare Stripe per upgrade piani
 
 ---
 
