@@ -23734,12 +23734,13 @@ async function loadAgencyData() {
 
         if (membersError) {
             console.error('Errore caricamento membri agenzia:', membersError);
-            // Tabella potrebbe non esistere ancora
-            return;
+            // Continua comunque mostrando il card vuoto
+            agencyState.members = [];
+            agencyState.pendingInvites = [];
+        } else {
+            agencyState.members = members || [];
+            agencyState.pendingInvites = members?.filter(m => m.status === 'pending') || [];
         }
-
-        agencyState.members = members || [];
-        agencyState.pendingInvites = members?.filter(m => m.status === 'pending') || [];
 
         // Carica info organizzazione
         const { data: org } = await supabase
