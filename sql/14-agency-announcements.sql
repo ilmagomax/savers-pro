@@ -3,6 +3,12 @@
 -- Owner/Admin possono creare annunci visibili agli animatori
 -- ============================================
 
+-- 0. Drop funzioni esistenti per evitare conflitti
+DROP FUNCTION IF EXISTS get_agency_announcements(uuid, uuid);
+DROP FUNCTION IF EXISTS mark_announcement_read(uuid, uuid);
+DROP FUNCTION IF EXISTS get_agency_documents(uuid, uuid);
+DROP FUNCTION IF EXISTS mark_document_read(uuid, uuid);
+
 -- 1. Tabella annunci
 CREATE TABLE IF NOT EXISTS agency_announcements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
