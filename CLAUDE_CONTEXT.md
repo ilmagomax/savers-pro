@@ -149,6 +149,7 @@ Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
 - `sql/10-fix-agency-rls.sql` - Fix RLS policies (evita ricorsione infinita)
 - `sql/11-fix-accept-invite.sql` - Fix funzione accept_agency_invite (mapping ruoli)
 - `sql/13-context-switcher.sql` - Context switcher per switch workspace (DA ESEGUIRE)
+- `sql/14-agency-announcements.sql` - Sistema annunci bacheca (DA ESEGUIRE)
 
 **Tabelle**:
 - `agency_members` - Membri dell'agenzia con ruoli e permessi granulari

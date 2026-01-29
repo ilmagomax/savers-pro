@@ -1144,6 +1144,21 @@
                     </div>
                 </div>
 
+                <!-- Bacheca Annunci (Owner/Admin) -->
+                <div style="padding:16px; border-bottom:1px solid var(--border-color);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div style="font-weight:600; font-size:0.95rem;">📢 Bacheca Annunci</div>
+                        <button class="btn btn-sm btn-primary" onclick="openCreateAnnouncementModal()" style="font-size:0.8rem;">
+                            + Nuovo Annuncio
+                        </button>
+                    </div>
+                    <div id="ownerAnnouncementsList" style="max-height:200px; overflow-y:auto;">
+                        <div style="text-align:center; color:var(--text-secondary); font-size:0.85rem; padding:12px;">
+                            Caricamento annunci...
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Lista Animatori -->
                 <div id="agencyAnimatorsList" style="max-height:300px; overflow-y:auto;">
                     <!-- Popolato dinamicamente -->
@@ -24448,29 +24463,139 @@ function renderMyColleagues(colleagues, orgOwner) {
     container.innerHTML = html;
 }
 
-// Renderizza annunci dell'agenzia
-function renderMyAgencyAnnouncements() {
+// Renderizza annunci dell'agenzia (per animatori)
+async function renderMyAgencyAnnouncements() {
     const container = document.getElementById('myAgencyAnnouncements');
     if (!container) return;
 
-    // Per ora mostra un messaggio di benvenuto
-    // In futuro si può implementare una tabella agency_announcements
-    const welcomeMessage = `
-        <div style="padding:8px;">
-            <div style="display:flex; gap:10px; align-items:flex-start;">
-                <div style="font-size:1.2rem;">🎉</div>
-                <div>
-                    <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">Benvenuto nel team!</div>
-                    <div style="font-size:0.8rem; color:var(--text-secondary);">
-                        Sei ora parte dell'agenzia <strong>${state.organization?.name || 'Agenzia'}</strong>.
-                        Controlla i calendari assegnati e inizia a registrare le tue feste!
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) {
+        // Fallback: messaggio di benvenuto
+        container.innerHTML = `
+            <div style="padding:8px;">
+                <div style="display:flex; gap:10px; align-items:flex-start;">
+                    <div style="font-size:1.2rem;">🎉</div>
+                    <div>
+                        <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">Benvenuto nel team!</div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary);">
+                            Sei ora parte dell'agenzia <strong>${state.organization?.name || 'Agenzia'}</strong>.
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        `;
+        return;
+    }
 
-    container.innerHTML = welcomeMessage;
+    try {
+        // Carica annunci usando la funzione RPC
+        const { data: announcements, error } = await supabase.rpc('get_agency_announcements', {
+            p_agency_id: state.profile.organization_id,
+            p_user_id: state.profile.id
+        });
+
+        if (error) {
+            console.error('Errore caricamento annunci:', error);
+            // Fallback: messaggio di benvenuto
+            container.innerHTML = `
+                <div style="padding:8px;">
+                    <div style="display:flex; gap:10px; align-items:flex-start;">
+                        <div style="font-size:1.2rem;">🎉</div>
+                        <div>
+                            <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">Benvenuto nel team!</div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary);">
+                                Sei ora parte dell'agenzia <strong>${state.organization?.name || 'Agenzia'}</strong>.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        if (!announcements || announcements.length === 0) {
+            // Nessun annuncio: mostra messaggio di benvenuto
+            container.innerHTML = `
+                <div style="padding:8px;">
+                    <div style="display:flex; gap:10px; align-items:flex-start;">
+                        <div style="font-size:1.2rem;">🎉</div>
+                        <div>
+                            <div style="font-weight:600; font-size:0.9rem; margin-bottom:4px;">Benvenuto nel team!</div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary);">
+                                Sei ora parte dell'agenzia <strong>${state.organization?.name || 'Agenzia'}</strong>.
+                                Controlla i calendari assegnati e inizia a registrare le tue feste!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        // Mostra annunci reali
+        container.innerHTML = announcements.map(ann => {
+            const priorityColors = {
+                'urgent': '#ef4444',
+                'high': '#f97316',
+                'normal': '#3b82f6',
+                'low': '#6b7280'
+            };
+            const priorityLabels = {
+                'urgent': '🚨 Urgente',
+                'high': '⚠️ Importante',
+                'normal': '',
+                'low': ''
+            };
+
+            const date = new Date(ann.created_at);
+            const timeAgo = typeof getTimeAgo === 'function' ? getTimeAgo(date) : date.toLocaleDateString('it-IT');
+
+            return `
+                <div style="padding:10px; border-bottom:1px solid var(--border-color); ${ann.is_pinned ? 'background:rgba(251, 191, 36, 0.1);' : ''} ${!ann.is_read ? 'border-left:3px solid var(--accent);' : ''}" onclick="markAnnouncementAsRead('${ann.id}', this)">
+                    <div style="display:flex; align-items:flex-start; gap:8px;">
+                        <div style="flex:1;">
+                            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; flex-wrap:wrap;">
+                                ${ann.is_pinned ? '<span title="Fissato">📌</span>' : ''}
+                                ${priorityLabels[ann.priority] ? `<span style="font-size:0.65rem; padding:2px 5px; background:${priorityColors[ann.priority]}; color:white; border-radius:4px;">${priorityLabels[ann.priority]}</span>` : ''}
+                                <span style="font-weight:600; font-size:0.85rem;">${escapeHtml(ann.title)}</span>
+                                ${!ann.is_read ? '<span style="width:8px; height:8px; background:var(--accent); border-radius:50%; display:inline-block;" title="Non letto"></span>' : ''}
+                            </div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; white-space:pre-wrap;">${escapeHtml(ann.content)}</div>
+                            <div style="font-size:0.65rem; color:var(--text-muted);">
+                                ${ann.created_by_name || 'Admin'} • ${timeAgo}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('Errore renderMyAgencyAnnouncements:', err);
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary);">Errore caricamento annunci</div>';
+    }
+}
+
+// Segna annuncio come letto
+async function markAnnouncementAsRead(announcementId, element) {
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.id) return;
+
+    try {
+        await supabase.rpc('mark_announcement_read', {
+            p_announcement_id: announcementId,
+            p_user_id: state.profile.id
+        });
+
+        // Rimuovi indicatore visivo "non letto"
+        if (element) {
+            element.style.borderLeft = 'none';
+            const dot = element.querySelector('[title="Non letto"]');
+            if (dot) dot.remove();
+        }
+    } catch (err) {
+        console.error('Errore mark announcement read:', err);
+    }
 }
 
 // Carica calendari assegnati all'animatore corrente
@@ -24673,6 +24798,359 @@ function renderAgencyManagement(org) {
             pendingEl.style.display = 'none';
         }
     }
+
+    // Carica annunci bacheca
+    loadOwnerAnnouncements();
+}
+
+// ============================================
+// SISTEMA ANNUNCI BACHECA
+// ============================================
+
+// Carica annunci per owner/admin
+async function loadOwnerAnnouncements() {
+    const container = document.getElementById('ownerAnnouncementsList');
+    if (!container) return;
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) {
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">Nessun annuncio</div>';
+        return;
+    }
+
+    try {
+        const { data: announcements, error } = await supabase.rpc('get_agency_announcements', {
+            p_agency_id: state.profile.organization_id,
+            p_user_id: state.profile.id
+        });
+
+        if (error) {
+            console.error('Errore caricamento annunci:', error);
+            // Fallback: mostra messaggio vuoto
+            container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">Nessun annuncio pubblicato</div>';
+            return;
+        }
+
+        if (!announcements || announcements.length === 0) {
+            container.innerHTML = `
+                <div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.85rem;">
+                    <div style="font-size:1.5rem; margin-bottom:8px;">📋</div>
+                    Nessun annuncio pubblicato.<br>
+                    <span style="font-size:0.8rem;">Crea il primo annuncio per il tuo team!</span>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = announcements.map(ann => renderAnnouncementItem(ann, true)).join('');
+
+    } catch (err) {
+        console.error('Errore loadOwnerAnnouncements:', err);
+        container.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-secondary);">Errore caricamento</div>';
+    }
+}
+
+// Renderizza singolo annuncio
+function renderAnnouncementItem(ann, isOwnerView = false) {
+    const priorityColors = {
+        'urgent': '#ef4444',
+        'high': '#f97316',
+        'normal': '#3b82f6',
+        'low': '#6b7280'
+    };
+    const priorityLabels = {
+        'urgent': '🚨 Urgente',
+        'high': '⚠️ Importante',
+        'normal': '',
+        'low': ''
+    };
+
+    const date = new Date(ann.created_at);
+    const timeAgo = getTimeAgo(date);
+
+    return `
+        <div style="padding:12px; border-bottom:1px solid var(--border-color); ${ann.is_pinned ? 'background:rgba(251, 191, 36, 0.1);' : ''}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                        ${ann.is_pinned ? '<span title="Fissato">📌</span>' : ''}
+                        ${priorityLabels[ann.priority] ? `<span style="font-size:0.7rem; padding:2px 6px; background:${priorityColors[ann.priority]}; color:white; border-radius:4px;">${priorityLabels[ann.priority]}</span>` : ''}
+                        <span style="font-weight:600; font-size:0.9rem;">${escapeHtml(ann.title)}</span>
+                    </div>
+                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:6px; white-space:pre-wrap;">${escapeHtml(ann.content)}</div>
+                    <div style="font-size:0.7rem; color:var(--text-muted);">
+                        ${ann.created_by_name || 'Admin'} • ${timeAgo}
+                    </div>
+                </div>
+                ${isOwnerView ? `
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn btn-xs btn-secondary" onclick="editAnnouncement('${ann.id}')" title="Modifica">✏️</button>
+                        <button class="btn btn-xs btn-danger" onclick="deleteAnnouncement('${ann.id}')" title="Elimina">🗑️</button>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Calcola "tempo fa"
+function getTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Adesso';
+    if (diffMins < 60) return `${diffMins} min fa`;
+    if (diffHours < 24) return `${diffHours} ore fa`;
+    if (diffDays < 7) return `${diffDays} giorni fa`;
+    return date.toLocaleDateString('it-IT');
+}
+
+// Apri modal creazione annuncio
+function openCreateAnnouncementModal() {
+    const modalContent = `
+        <div style="padding:16px;">
+            <div class="form-group">
+                <label class="form-label">Titolo *</label>
+                <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Messaggio *</label>
+                <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="1000"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Priorità</label>
+                <select class="form-input form-select" id="announcementPriority">
+                    <option value="normal">Normale</option>
+                    <option value="low">Bassa</option>
+                    <option value="high">Alta - Importante</option>
+                    <option value="urgent">Urgente</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="announcementPinned">
+                    <span>📌 Fissa in cima alla bacheca</span>
+                </label>
+            </div>
+            <div style="display:flex; gap:12px; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeModal('createAnnouncementModal')" style="flex:1;">
+                    Annulla
+                </button>
+                <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1;">
+                    📢 Pubblica
+                </button>
+            </div>
+        </div>
+    `;
+
+    showDynamicModal('createAnnouncementModal', '📢 Nuovo Annuncio', modalContent);
+}
+
+// Salva nuovo annuncio
+async function saveAnnouncement() {
+    const title = document.getElementById('announcementTitle')?.value?.trim();
+    const content = document.getElementById('announcementContent')?.value?.trim();
+    const priority = document.getElementById('announcementPriority')?.value || 'normal';
+    const isPinned = document.getElementById('announcementPinned')?.checked || false;
+
+    if (!title || !content) {
+        showToast('Inserisci titolo e messaggio', 'error');
+        return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) {
+        showToast('Errore connessione', 'error');
+        return;
+    }
+
+    try {
+        const { error } = await supabase
+            .from('agency_announcements')
+            .insert({
+                agency_id: state.profile.organization_id,
+                created_by: state.profile.id,
+                title: title,
+                content: content,
+                priority: priority,
+                is_pinned: isPinned
+            });
+
+        if (error) throw error;
+
+        showToast('Annuncio pubblicato!', 'success');
+        closeModal('createAnnouncementModal');
+
+        // Ricarica annunci
+        await loadOwnerAnnouncements();
+
+    } catch (err) {
+        console.error('Errore salvataggio annuncio:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Elimina annuncio
+async function deleteAnnouncement(announcementId) {
+    if (!confirm('Eliminare questo annuncio?')) return;
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        const { error } = await supabase
+            .from('agency_announcements')
+            .delete()
+            .eq('id', announcementId);
+
+        if (error) throw error;
+
+        showToast('Annuncio eliminato', 'success');
+        await loadOwnerAnnouncements();
+
+    } catch (err) {
+        console.error('Errore eliminazione annuncio:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Modifica annuncio
+async function editAnnouncement(announcementId) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        // Carica annuncio
+        const { data: ann, error } = await supabase
+            .from('agency_announcements')
+            .select('*')
+            .eq('id', announcementId)
+            .single();
+
+        if (error || !ann) {
+            showToast('Annuncio non trovato', 'error');
+            return;
+        }
+
+        const modalContent = `
+            <div style="padding:16px;">
+                <div class="form-group">
+                    <label class="form-label">Titolo *</label>
+                    <input type="text" class="form-input" id="editAnnouncementTitle" value="${escapeHtml(ann.title)}" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Messaggio *</label>
+                    <textarea class="form-input" id="editAnnouncementContent" rows="4" maxlength="1000">${escapeHtml(ann.content)}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Priorità</label>
+                    <select class="form-input form-select" id="editAnnouncementPriority">
+                        <option value="normal" ${ann.priority === 'normal' ? 'selected' : ''}>Normale</option>
+                        <option value="low" ${ann.priority === 'low' ? 'selected' : ''}>Bassa</option>
+                        <option value="high" ${ann.priority === 'high' ? 'selected' : ''}>Alta - Importante</option>
+                        <option value="urgent" ${ann.priority === 'urgent' ? 'selected' : ''}>Urgente</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" id="editAnnouncementPinned" ${ann.is_pinned ? 'checked' : ''}>
+                        <span>📌 Fissa in cima alla bacheca</span>
+                    </label>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:20px;">
+                    <button class="btn btn-secondary" onclick="closeModal('editAnnouncementModal')" style="flex:1;">
+                        Annulla
+                    </button>
+                    <button class="btn btn-primary" onclick="updateAnnouncement('${announcementId}')" style="flex:1;">
+                        💾 Salva Modifiche
+                    </button>
+                </div>
+            </div>
+        `;
+
+        showDynamicModal('editAnnouncementModal', '✏️ Modifica Annuncio', modalContent);
+
+    } catch (err) {
+        console.error('Errore caricamento annuncio:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Aggiorna annuncio
+async function updateAnnouncement(announcementId) {
+    const title = document.getElementById('editAnnouncementTitle')?.value?.trim();
+    const content = document.getElementById('editAnnouncementContent')?.value?.trim();
+    const priority = document.getElementById('editAnnouncementPriority')?.value || 'normal';
+    const isPinned = document.getElementById('editAnnouncementPinned')?.checked || false;
+
+    if (!title || !content) {
+        showToast('Inserisci titolo e messaggio', 'error');
+        return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        const { error } = await supabase
+            .from('agency_announcements')
+            .update({
+                title: title,
+                content: content,
+                priority: priority,
+                is_pinned: isPinned
+            })
+            .eq('id', announcementId);
+
+        if (error) throw error;
+
+        showToast('Annuncio aggiornato!', 'success');
+        closeModal('editAnnouncementModal');
+        await loadOwnerAnnouncements();
+
+    } catch (err) {
+        console.error('Errore aggiornamento annuncio:', err);
+        showToast('Errore: ' + err.message, 'error');
+    }
+}
+
+// Helper per mostrare modal dinamici
+function showDynamicModal(modalId, title, content) {
+    let modal = document.getElementById(modalId);
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-overlay" onclick="closeModal('${modalId}')"></div>
+            <div class="modal-content" style="max-width:450px;">
+                <div class="modal-header">
+                    <div class="modal-title">${title}</div>
+                    <button class="modal-close" onclick="closeModal('${modalId}')">&times;</button>
+                </div>
+                <div class="modal-body" id="${modalId}Body">
+                    ${content}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    } else {
+        modal.querySelector('.modal-title').textContent = title;
+        document.getElementById(`${modalId}Body`).innerHTML = content;
+    }
+
+    modal.classList.add('show');
+}
+
+// Helper escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Apri modal invita animatore
