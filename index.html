@@ -4269,6 +4269,51 @@
     </div>
 
     <!-- ============================================
+         MODAL: Crea Annuncio Bacheca
+         ============================================ -->
+    <div class="modal-overlay modal-center" id="createAnnouncementModal">
+        <div class="modal" style="max-width:450px;">
+            <div class="modal-header" style="background:linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color:white;">
+                <div class="modal-title" style="color:white;">📢 Nuovo Annuncio</div>
+                <button class="modal-close" onclick="closeModal('createAnnouncementModal')" style="color:white;">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Titolo *</label>
+                    <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Messaggio *</label>
+                    <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="1000"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Priorità</label>
+                    <select class="form-input form-select" id="announcementPriority">
+                        <option value="normal">Normale</option>
+                        <option value="low">Bassa</option>
+                        <option value="high">Alta - Importante</option>
+                        <option value="urgent">Urgente</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" id="announcementPinned">
+                        <span>📌 Fissa in cima alla bacheca</span>
+                    </label>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:16px;">
+                    <button class="btn btn-secondary" onclick="closeModal('createAnnouncementModal')" style="flex:1;">
+                        Annulla
+                    </button>
+                    <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1;">
+                        📢 Pubblica
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
          MODAL: Invita Animatore nell'Agenzia
          ============================================ -->
     <div class="modal-overlay modal-center" id="inviteAnimatorModal">
@@ -24910,70 +24955,19 @@ function getTimeAgo(date) {
 
 // Apri modal creazione annuncio
 function openCreateAnnouncementModal() {
-    console.log('📢 openCreateAnnouncementModal chiamato');
+    // Reset form
+    const titleEl = document.getElementById('announcementTitle');
+    const contentEl = document.getElementById('announcementContent');
+    const priorityEl = document.getElementById('announcementPriority');
+    const pinnedEl = document.getElementById('announcementPinned');
 
-    // Crea o aggiorna il modal
-    let modalOverlay = document.getElementById('createAnnouncementModal');
-    if (!modalOverlay) {
-        modalOverlay = document.createElement('div');
-        modalOverlay.id = 'createAnnouncementModal';
-        modalOverlay.className = 'modal-overlay modal-center';
-        document.body.appendChild(modalOverlay);
-    }
+    if (titleEl) titleEl.value = '';
+    if (contentEl) contentEl.value = '';
+    if (priorityEl) priorityEl.value = 'normal';
+    if (pinnedEl) pinnedEl.checked = false;
 
-    modalOverlay.innerHTML = `
-        <div class="modal" style="max-width:450px; width:90%;">
-            <div class="modal-header">
-                <div class="modal-title">📢 Nuovo Annuncio</div>
-                <button class="modal-close" onclick="closeModal('createAnnouncementModal')">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Titolo *</label>
-                    <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Messaggio *</label>
-                    <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="1000"></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Priorità</label>
-                    <select class="form-input form-select" id="announcementPriority">
-                        <option value="normal">Normale</option>
-                        <option value="low">Bassa</option>
-                        <option value="high">Alta - Importante</option>
-                        <option value="urgent">Urgente</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                        <input type="checkbox" id="announcementPinned">
-                        <span>📌 Fissa in cima alla bacheca</span>
-                    </label>
-                </div>
-                <div style="display:flex; gap:12px; margin-top:20px;">
-                    <button class="btn btn-secondary" onclick="closeModal('createAnnouncementModal')" style="flex:1;">
-                        Annulla
-                    </button>
-                    <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1;">
-                        📢 Pubblica
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Blocca scroll e mostra modal
-    document.body.style.overflow = 'hidden';
-
-    // Forza reflow prima di aggiungere la classe active (per animazione CSS)
-    void modalOverlay.offsetHeight;
-
-    // Usa setTimeout per assicurarsi che il DOM sia aggiornato
-    setTimeout(() => {
-        modalOverlay.classList.add('active');
-        console.log('📢 Modal attivato, classList:', modalOverlay.classList.toString());
-    }, 10);
+    // Usa openModal standard
+    openModal('createAnnouncementModal');
 }
 
 // Salva nuovo annuncio
