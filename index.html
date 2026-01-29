@@ -24910,43 +24910,66 @@ function getTimeAgo(date) {
 
 // Apri modal creazione annuncio
 function openCreateAnnouncementModal() {
-    const modalContent = `
-        <div style="padding:16px;">
-            <div class="form-group">
-                <label class="form-label">Titolo *</label>
-                <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100">
+    console.log('📢 openCreateAnnouncementModal chiamato');
+
+    // Crea o aggiorna il modal
+    let modal = document.getElementById('createAnnouncementModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'createAnnouncementModal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="closeModal('createAnnouncementModal')"></div>
+        <div class="modal-content" style="max-width:450px;">
+            <div class="modal-header">
+                <div class="modal-title">📢 Nuovo Annuncio</div>
+                <button class="modal-close" onclick="closeModal('createAnnouncementModal')">&times;</button>
             </div>
-            <div class="form-group">
-                <label class="form-label">Messaggio *</label>
-                <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="1000"></textarea>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Priorità</label>
-                <select class="form-input form-select" id="announcementPriority">
-                    <option value="normal">Normale</option>
-                    <option value="low">Bassa</option>
-                    <option value="high">Alta - Importante</option>
-                    <option value="urgent">Urgente</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    <input type="checkbox" id="announcementPinned">
-                    <span>📌 Fissa in cima alla bacheca</span>
-                </label>
-            </div>
-            <div style="display:flex; gap:12px; margin-top:20px;">
-                <button class="btn btn-secondary" onclick="closeModal('createAnnouncementModal')" style="flex:1;">
-                    Annulla
-                </button>
-                <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1;">
-                    📢 Pubblica
-                </button>
+            <div class="modal-body">
+                <div style="padding:16px;">
+                    <div class="form-group">
+                        <label class="form-label">Titolo *</label>
+                        <input type="text" class="form-input" id="announcementTitle" placeholder="es. Riunione settimanale" maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Messaggio *</label>
+                        <textarea class="form-input" id="announcementContent" rows="4" placeholder="Scrivi il tuo annuncio..." maxlength="1000"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Priorità</label>
+                        <select class="form-input form-select" id="announcementPriority">
+                            <option value="normal">Normale</option>
+                            <option value="low">Bassa</option>
+                            <option value="high">Alta - Importante</option>
+                            <option value="urgent">Urgente</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="announcementPinned">
+                            <span>📌 Fissa in cima alla bacheca</span>
+                        </label>
+                    </div>
+                    <div style="display:flex; gap:12px; margin-top:20px;">
+                        <button class="btn btn-secondary" onclick="closeModal('createAnnouncementModal')" style="flex:1;">
+                            Annulla
+                        </button>
+                        <button class="btn btn-primary" onclick="saveAnnouncement()" style="flex:1;">
+                            📢 Pubblica
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
 
-    showDynamicModal('createAnnouncementModal', '📢 Nuovo Annuncio', modalContent);
+    // Blocca scroll e mostra modal
+    document.body.style.overflow = 'hidden';
+    modal.classList.add('active');
+    console.log('📢 Modal creato e attivato');
 }
 
 // Salva nuovo annuncio
