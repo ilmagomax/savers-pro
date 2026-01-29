@@ -8034,6 +8034,19 @@ function invalidateProjectCache(projectId) {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    // IMPORTANTE: Salva immediatamente l'hash dell'invito PRIMA che venga perso
+    // durante il flusso di autenticazione Supabase
+    const currentHash = window.location.hash;
+    if (currentHash.startsWith('#invite=')) {
+        const inviteToken = currentHash.replace('#invite=', '');
+        if (inviteToken) {
+            console.log('🎟️ Invite token salvato all\'avvio:', inviteToken);
+            localStorage.setItem('pendingInviteToken', inviteToken);
+        }
+        // Rimuovi hash dall'URL per evitare confusione
+        history.replaceState(null, '', window.location.pathname);
+    }
+
     loadState();
     initializeApp();
     initKeyboardHandler(); // Gestione tastiera virtuale mobile
@@ -24444,31 +24457,14 @@ async function upgradePlan(planType) {
     // TODO: Integrazione Stripe
 }
 
-// Accetta invito (chiamato all'avvio se c'è #invite=token nell'URL)
-async function checkAndAcceptInvite() {
-    const hash = window.location.hash;
-    console.log('🔗 checkAndAcceptInvite - hash:', hash);
-
-    if (!hash.startsWith('#invite=')) return;
-
-    const token = hash.replace('#invite=', '');
-    console.log('🎟️ Invite token trovato:', token);
-
-    if (!token) return;
-
-    // Rimuovi hash dall'URL
-    history.replaceState(null, '', window.location.pathname);
-
-    // Verifica se loggato
-    if (!state.profile?.id) {
-        // Salva token per dopo il login
-        console.log('👤 Utente non loggato, salvo token per dopo');
-        localStorage.setItem('pendingInviteToken', token);
-        showToast('Effettua il login per accettare l\'invito', 'info');
+// Accetta invito con token (logica comune)
+async function acceptInviteWithToken(token) {
+    if (!token) {
+        console.warn('⚠️ acceptInviteWithToken chiamato senza token');
         return;
     }
 
-    console.log('✅ Utente loggato, accetto invito per:', state.profile.email);
+    console.log('🎟️ acceptInviteWithToken - token:', token);
 
     try {
         const supabase = getSupabase();
@@ -24506,16 +24502,56 @@ async function checkAndAcceptInvite() {
     }
 }
 
-// Controlla invito pendente salvato e ripristina hash
+// Accetta invito (chiamato all'avvio se c'è #invite=token nell'URL)
+// NOTA: L'hash viene salvato in localStorage da DOMContentLoaded,
+// quindi questa funzione ora è principalmente un fallback
+async function checkAndAcceptInvite() {
+    const hash = window.location.hash;
+    console.log('🔗 checkAndAcceptInvite - hash:', hash);
+
+    if (!hash.startsWith('#invite=')) return;
+
+    const token = hash.replace('#invite=', '');
+    console.log('🎟️ Invite token trovato in hash:', token);
+
+    if (!token) return;
+
+    // Rimuovi hash dall'URL
+    history.replaceState(null, '', window.location.pathname);
+
+    // Verifica se loggato
+    if (!state.profile?.id) {
+        // Salva token per dopo il login
+        console.log('👤 Utente non loggato, salvo token per dopo');
+        localStorage.setItem('pendingInviteToken', token);
+        showToast('Effettua il login per accettare l\'invito', 'info');
+        return;
+    }
+
+    console.log('✅ Utente loggato, accetto invito per:', state.profile.email);
+    await acceptInviteWithToken(token);
+}
+
+// Controlla invito pendente salvato e accettalo direttamente
 async function checkPendingInvite() {
     const token = localStorage.getItem('pendingInviteToken');
-    if (!token || !state.profile?.id) return;
+    console.log('🔍 checkPendingInvite - token:', token, 'profile:', !!state.profile?.id);
 
+    if (!token) return;
+
+    // Rimuovi subito per evitare loop
     localStorage.removeItem('pendingInviteToken');
 
-    // Ripristina hash per checkAndAcceptInvite
-    window.location.hash = `#invite=${token}`;
-    // checkAndAcceptInvite verrà chiamata subito dopo
+    if (!state.profile?.id) {
+        // Non ancora loggato, ri-salva per dopo
+        localStorage.setItem('pendingInviteToken', token);
+        console.log('👤 Utente non ancora loggato, token ri-salvato');
+        return;
+    }
+
+    // Accetta direttamente l'invito
+    console.log('✅ Utente loggato, accetto invito per:', state.profile.email);
+    await acceptInviteWithToken(token);
 }
 
 // ============================================
