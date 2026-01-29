@@ -24535,23 +24535,32 @@ async function checkAndAcceptInvite() {
 // Controlla invito pendente salvato e accettalo direttamente
 async function checkPendingInvite() {
     const token = localStorage.getItem('pendingInviteToken');
-    console.log('🔍 checkPendingInvite - token:', token, 'profile:', !!state.profile?.id);
+    console.log('🔍 checkPendingInvite chiamato');
+    console.log('  - token in localStorage:', token);
+    console.log('  - state.profile:', state.profile);
+    console.log('  - state.profile?.id:', state.profile?.id);
 
-    if (!token) return;
+    if (!token) {
+        console.log('  ❌ Nessun token in localStorage, esco');
+        return;
+    }
 
     // Rimuovi subito per evitare loop
     localStorage.removeItem('pendingInviteToken');
+    console.log('  🗑️ Token rimosso da localStorage');
 
     if (!state.profile?.id) {
         // Non ancora loggato, ri-salva per dopo
         localStorage.setItem('pendingInviteToken', token);
-        console.log('👤 Utente non ancora loggato, token ri-salvato');
+        console.log('  👤 Utente non ancora loggato, token ri-salvato');
         return;
     }
 
     // Accetta direttamente l'invito
-    console.log('✅ Utente loggato, accetto invito per:', state.profile.email);
+    console.log('  ✅ Utente loggato, accetto invito per:', state.profile.email);
+    console.log('  📤 Chiamo acceptInviteWithToken...');
     await acceptInviteWithToken(token);
+    console.log('  ✅ acceptInviteWithToken completato');
 }
 
 // ============================================
