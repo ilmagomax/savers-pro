@@ -4268,6 +4268,21 @@
                         <div class="text-muted text-sm">Caricamento calendari...</div>
                     </div>
                     <small class="text-muted">Seleziona i calendari a cui l'animatore avrà accesso</small>
+
+                    <!-- Crea nuovo calendario -->
+                    <div id="newCalendarSection" style="margin-top:12px; padding:12px; background:var(--bg-tertiary); border-radius:8px; border:1px dashed var(--border-color);">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <span style="font-size:1.2rem;">📅</span>
+                            <span style="font-weight:500; font-size:0.9rem;">Crea nuovo calendario</span>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" class="form-input" id="newCalendarName" placeholder="Nome calendario (es. Mario Rossi)" style="flex:1; font-size:0.85rem;">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="createCalendarForAnimator()" style="white-space:nowrap;">
+                                + Crea
+                            </button>
+                        </div>
+                        <small class="text-muted" style="display:block; margin-top:4px;">Crea un calendario dedicato per questo animatore</small>
+                    </div>
                 </div>
 
                 <!-- Info condivisione automatica -->
@@ -24270,6 +24285,69 @@ async function unshareCalendarWithUser(email, calendarId) {
     } catch (err) {
         console.error('❌ Errore rimozione condivisione:', err);
         return false;
+    }
+}
+
+// Crea un nuovo calendario Google per l'animatore
+async function createCalendarForAnimator() {
+    const nameInput = document.getElementById('newCalendarName');
+    const calendarName = nameInput?.value?.trim();
+
+    if (!calendarName) {
+        showToast('Inserisci un nome per il calendario', 'error');
+        nameInput?.focus();
+        return;
+    }
+
+    if (!isGoogleSignedIn) {
+        showToast('Devi essere connesso a Google Calendar', 'error');
+        return;
+    }
+
+    try {
+        showToast('Creazione calendario...', 'info');
+
+        // Crea il calendario usando l'API Google Calendar
+        const response = await withValidGoogleToken(async () => {
+            return await gapi.client.calendar.calendars.insert({
+                resource: {
+                    summary: calendarName,
+                    description: 'Calendario creato da SAVERS PRO per gestione agenzia',
+                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Rome'
+                }
+            });
+        });
+
+        const newCalendar = response.result;
+        console.log('✅ Calendario creato:', newCalendar);
+
+        // Aggiungi alla lista dei calendari dell'utente
+        userCalendars.push({
+            id: newCalendar.id,
+            summary: newCalendar.summary,
+            backgroundColor: '#4285f4', // Colore default
+            primary: false
+        });
+
+        // Ricarica la lista dei calendari nel form
+        loadCalendarsForInvite();
+
+        // Seleziona automaticamente il nuovo calendario
+        setTimeout(() => {
+            const checkbox = document.querySelector(`.invite-calendar-checkbox[value="${newCalendar.id}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+            }
+        }, 100);
+
+        // Pulisci l'input
+        nameInput.value = '';
+
+        showToast(`Calendario "${calendarName}" creato e selezionato!`, 'success');
+
+    } catch (err) {
+        console.error('❌ Errore creazione calendario:', err);
+        showToast('Errore creazione calendario: ' + (err.result?.error?.message || err.message), 'error');
     }
 }
 
