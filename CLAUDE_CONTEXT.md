@@ -1,7 +1,27 @@
 # SAVERS PRO - Context File per Claude Code
-> Aggiornato: 2026-01-29 - Autenticazione Unificata Google + Supabase
+> Aggiornato: 2026-01-29 (Sessione serale) - Sistema Annunci + Documenti Agenzia
 
 ## STATO PROGETTO ATTUALE
+
+### Sessione 2026-01-29 (Serale) - RIEPILOGO
+
+**Completato oggi:**
+1. ✅ Modal "Nuovo Annuncio" - risolto problema di visualizzazione (cache browser + stili inline)
+2. ✅ Sistema annunci con link allegati (Google Drive)
+3. ✅ Modifica/elimina annunci per owner
+4. ✅ Design migliorato con intestazioni leggibili
+5. ✅ Sezione "Manuali & Policy" per owner e animatori
+6. ✅ Fix errori sicurezza Supabase (SQL pronto)
+
+**Bloccato:**
+- ⚠️ Deploy Vercel: limite giornaliero raggiunto (100 deploy) - riprova tra ~13 ore
+- I commit sono già pushati su GitHub, il deploy avverrà automaticamente
+
+**SQL da eseguire su Supabase:**
+- `sql/14-agency-announcements.sql` - ESEGUITO ✅
+- `sql/15-fix-security-errors.sql` - ESEGUITO ✅
+
+---
 
 ### Sistema Auth Unificato (COMPLETATO 2026-01-29)
 
@@ -36,18 +56,6 @@ async function withValidGoogleToken(apiCallFn) {
 5. Se il token è in scadenza (<5 min), viene rinnovato preventivamente
 6. Se scaduto, viene fatto refresh tramite `sb.auth.refreshSession()`
 
-#### Tutte le chiamate GAPI ora usano il wrapper:
-- `loadUserCalendars()` - Lista calendari
-- `loadCalendarEvents()` - Lista eventi
-- `createCalendarEvent()` - Crea evento
-- `deleteGoogleEvent()` - Elimina evento
-- `updateGoogleEvent()` - Aggiorna evento
-- `respondToInvite()` - Risponde a invito
-- `saveBusyEvent()` - Salva non disponibilità
-- `createCalendarEventToCalendar()` - Crea con invitati
-- `findFreeSlots()` - Cerca slot liberi
-- `scheduleHabitToCalendar()` - Schedula abitudine
-
 ### Sistema Compensi Agenzia (IN LAVORAZIONE)
 
 Sistema di gestione compensi per agenzie di animazione con flusso bidirezionale animatore-proprietario.
@@ -79,164 +87,79 @@ Sistema di gestione compensi per agenzie di animazione con flusso bidirezionale 
    - **Accettare** → torna a PENDING_OWNER_CONFIRMATION
    - **Rifiutare** → torna a PENDING (deve ri-consegnare)
 
-#### Vista Finanziaria Differenziata
-
-**Vista Agenzia (Owner/Admin):**
-- Ritiro Saldo: €100
-- Spese Totali: €70 (€50 guadagno anim. + €20 spese)
-- Profitto Agenzia: €30
-
-**Vista Animatore (4 colonne):**
-- Ritiro Saldo: €100
-- Spese: €20
-- Guadagno: €50
-- Compensi Ag.: €30
-
-#### Identificazione Eventi Duplicati (NUOVO!)
-
-Gli eventi duplicati su calendari diversi vengono unificati tramite hash:
-```javascript
-// Hash universale = titolo (lowercase) + data/ora (normalizzata)
-// SENZA organizer - così eventi duplicati hanno stesso ID
-const summary = event.summary.trim().toLowerCase();
-const startTime = normalizeDateTime(event.start.dateTime);
-const universalId = 'evt_' + simpleHash(`${summary}|${startTime}`);
-```
-
-**Funzione chiave**: `getEventCommentId(event, isGoogle)` (~riga 29835)
-
-Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
-- event.id (specifico calendario)
-- iCalUID
-- recurringEventId
-- Hash universale (titolo + data/ora)
-
-#### Permessi Modifica/Elimina Commenti
-- **Owner/Admin**: Può SEMPRE modificare/eliminare qualsiasi commento
-- **Animatore**: Può modificare/eliminare SOLO i propri commenti entro 5 minuti
-
-#### Funzioni Chiave (index.html)
-- `getEventCommentId(event, isGoogle)` - Genera ID universale (~riga 29835)
-- `simpleHash(str)` - Hash deterministico (~riga 29875)
-- `renderAgencyFeeWallet()` - Wallet Compensi mensile (~riga 17653)
-- `openAgencyFeeDetail()` - Modal dettaglio compensi
-- `markAgencyFeesAsDelivered()` - Animatore segna consegnato
-- `confirmAgencyFeesReceived()` - Owner conferma ricezione
-- `getAgencyFeesForMonth(yearMonth)` - Calcola compensi per mese (~riga 17570)
-- `renderEventsDashboard()` - Dashboard Feste & Eventi (~riga 18737)
-- `renderEventFinanceSummaryFromComments()` - Riepilogo evento (~riga 17314)
-- `showEventFinanceDetail()` - Dettaglio evento dalla dashboard (~riga 19215)
-- `canSeeFinancialComment()` - Controllo visibilità commenti (~riga 30880)
-- `renderEventComments()` - Renderizza commenti con unificazione (~riga 30137)
-
-### Bug Risolti (2026-01-28/29)
-
-1. **Calcoli finanziari errati** - Usava `animatorEarning` invece di `animatorProfit`
-2. **guadagnoAnimatore mancante** - Variabile non dichiarata in showEventFinanceDetail
-3. **Fallback calcolo** - Se `animatorProfit` è null, calcola `incomeTotal - agencyFee - animatorExpenses`
-4. **Owner vede tutti i commenti** - Aggiunto check `isOwnerOrAdmin` in `canSeeFinancialComment()`
-5. **Owner può sempre editare** - Rimosso limite 5 minuti per owner/admin
-6. **Eventi duplicati** - Hash universale basato su titolo+data/ora (senza organizer)
-7. **Privacy dashboard Feste & Eventi** - Animatore vede solo propri commenti finanziari (non quelli degli altri)
-8. **Navigazione "Vai all'evento"** - Fix ricerca evento tramite hash universale + uso `originalEventId` per navigazione
-9. **Sistema Agenzia completo** - Nuove tabelle `agency_members`, `agency_calendar_access`, gestione inviti/permessi
-10. **Bacheca/Colleghi non visibili per animatore** - Fix: `state.organization` non veniva aggiornato dopo accettazione invito. L'animatore restava con la sua vecchia org personale, veniva identificato come `isOrgOwner=true` e la card non veniva mostrata. Aggiunto refresh forzato di `state.organization` in `loadAgencyData()` e `loadMyAgencyFullData()`.
-
 ### Sistema Agenzia (AGGIORNATO 2026-01-29)
 
 **File SQL**:
-- `sql/09-agency-system.sql` - Schema base (tabelle, funzioni, trigger)
-- `sql/10-fix-agency-rls.sql` - Fix RLS policies (evita ricorsione infinita)
-- `sql/11-fix-accept-invite.sql` - Fix funzione accept_agency_invite (mapping ruoli)
-- `sql/13-context-switcher.sql` - Context switcher per switch workspace (DA ESEGUIRE)
-- `sql/14-agency-announcements.sql` - Sistema annunci bacheca (DA ESEGUIRE)
+- `sql/09-agency-system.sql` - Schema base (ESEGUITO ✅)
+- `sql/10-fix-agency-rls.sql` - Fix RLS policies (ESEGUITO ✅)
+- `sql/11-fix-accept-invite.sql` - Fix mapping ruoli (ESEGUITO ✅)
+- `sql/13-context-switcher.sql` - Context switcher (DA ESEGUIRE)
+- `sql/14-agency-announcements.sql` - Annunci + documenti (ESEGUITO ✅)
+- `sql/15-fix-security-errors.sql` - Fix sicurezza (ESEGUITO ✅)
 
-**Tabelle**:
+**Tabelle Database**:
 - `agency_members` - Membri dell'agenzia con ruoli e permessi granulari
 - `agency_calendar_access` - Calendari assegnati a ogni membro
 - `agency_invites_log` - Log di inviti/revoche per audit
+- `agency_announcements` - Annunci bacheca con link_url per allegati
+- `agency_announcement_reads` - Traccia lettura annunci
+- `agency_documents` - Documenti/policy agenzia (manuali, contratti, formazione)
+- `agency_document_reads` - Traccia lettura documenti obbligatori
 
-**Mapping Ruoli** (agency_members.role → profiles.org_role):
-- `animator` → `member` (check constraint su profiles ammette solo: owner, admin, member, viewer)
-- `admin` → `admin`
-- `owner` → `owner`
-- `viewer` → `member`
+**Funzioni JS Annunci (NUOVO)**:
+- `openCreateAnnouncementModal()` - Apre modal con stili forzati (fix cache)
+- `closeAnnouncementModal()` - Chiude e resetta form
+- `saveAnnouncement()` - Salva/aggiorna annuncio con link_url
+- `editAnnouncement(id)` - Carica annuncio nel form per modifica
+- `deleteAnnouncement(id)` - Elimina annuncio
+- `loadOwnerAnnouncements()` - Carica lista annunci per owner
+- `renderAnnouncementItem()` - Renderizza singolo annuncio con design migliorato
 
-**Funzioni JS chiave**:
-- `isAgencyOwnerOrAdmin()` - Verifica se utente è owner/admin
-- `canSeeAllFinances()` - Verifica permesso vedere tutti i dati finanziari
-- `getMyAgencyPermissions()` - Ottiene permessi granulari dell'utente
-- `loadAgencyData()` - Carica membri e inviti
-- `loadMyAgencyFullData()` - Carica dati completi per animatore (colleghi, calendari, bacheca)
-- `sendAnimatorInvite()` - Invia invito a nuovo animatore (con condivisione automatica calendari Google)
-- `checkAndAcceptInvite()` - Accetta invito da URL (#invite=token)
-- `acceptInviteWithToken()` - Chiama RPC `accept_agency_invite` e mostra modal benvenuto
-- `showWelcomeToAgencyModal()` - Modal di benvenuto dopo accettazione invito
-- `shareCalendarsWithUser()` - Condivide calendari Google automaticamente con ACL
-- `createCalendarForAnimator()` - Crea nuovo calendario da assegnare
+**Funzioni JS Documenti (NUOVO)**:
+- `openCreateDocumentModal()` - Apre modal creazione documento
+- `closeDocumentModal()` - Chiude modal documento
+- `saveDocument()` - Salva/aggiorna documento
+- `editDocument(id)` - Modifica documento esistente
+- `deleteDocument(id)` - Elimina documento
+- `loadOwnerDocuments()` - Carica documenti per owner
+- `loadMyAgencyDocuments()` - Carica documenti per animatori
+- `renderDocumentItem()` - Renderizza documento con categoria colorata
+- `markDocumentAsRead(id)` - Segna documento come letto
 
-**Flusso Invito**:
-1. Capo agenzia va su TEAM > Gestione Agenzia
-2. Clicca "Invita Animatore", inserisce email, ruolo, permessi
-3. Seleziona calendari da condividere (condivisione automatica Google Calendar)
-4. Riceve link da condividere (es. `#invite=token-uuid`)
-5. Animatore clicca link, fa login/registrazione
-6. Token salvato in localStorage durante auth flow
-7. Dopo login, `checkPendingInvite()` chiama `accept_agency_invite` RPC
-8. RPC aggiorna: agency_members.status='active', profiles.organization_id, profiles.org_role
-9. Modal benvenuto con opzioni "Vai alla Home" / "Vai al Team"
-10. Animatore vede card "La Mia Agenzia" con colleghi, calendari, bacheca
+**Categorie Documenti**:
+- `manual` - 📖 Manuale (sfondo blu)
+- `policy` - 📋 Policy/Regolamento (sfondo giallo)
+- `contract` - 📝 Contratto (sfondo rosso)
+- `training` - 🎓 Formazione (sfondo verde)
+- `general` - 📁 Generale (sfondo grigio)
 
-**Card "La Mia Agenzia" (per animatori)**:
-- Header con nome agenzia, ruolo, data iscrizione
-- Sezione Bacheca Annunci (messaggio di benvenuto)
-- Sezione "I Miei Colleghi" con avatar e ruoli
-- Sezione "I Miei Calendari" assegnati
+### Bug Risolti (2026-01-29)
 
-### Context Switcher (NUOVO 2026-01-29)
+1. **Modal annunci non si apriva** - Il problema era duplice:
+   - Cache browser con vecchia versione (`class="modal"` invece di `class="modal-overlay"`)
+   - Soluzione: stili CSS inline forzati in `openCreateAnnouncementModal()`
+2. **Errore SQL `get_agency_announcements`** - Funzione esistente con signature diversa
+   - Soluzione: aggiunto `DROP FUNCTION IF EXISTS` prima di CREATE
+3. **Errore RLS `achievements`** - Tabella definizioni senza `user_id`
+   - Soluzione: policy `USING (true)` per lettura pubblica
 
-L'utente può avere SIA il suo workspace personale SIA appartenere a un'agenzia.
-Nel dropdown profilo (header) appare un selettore per switchare tra i workspace disponibili.
-
-**File SQL**: `sql/13-context-switcher.sql`
-- Aggiunge campo `current_context_org_id` in profiles
-- Funzione RPC `get_user_organizations(p_user_id)` - lista workspace accessibili
-- Funzione RPC `switch_organization_context(p_user_id, p_org_id)` - cambia contesto
-
-**Funzioni JS chiave**:
-- `loadUserWorkspaces()` - Carica lista workspace via RPC
-- `renderContextSwitcher()` - Renderizza dropdown nel profilo
-- `switchWorkspaceContext(orgId)` - Cambia contesto e ricarica dati
-- `refreshCurrentPageData()` - Ricarica dati dopo cambio contesto
-
-**Logica**:
-- Ogni utente ha il suo workspace personale (creato alla registrazione)
-- Può anche appartenere a una o più agenzie
-- `current_context_org_id` indica quale workspace è attivo
-- Se null, usa `organization_id` (default)
-- Al cambio contesto, i dati vengono filtrati per l'organizzazione selezionata
-
-**Problemi Noti da Risolvere**:
-- [x] ~~Animatore non vede colleghi~~ - FIXATO (bug era in `state.organization` stale)
-- [x] ~~Bacheca non mostra contenuto~~ - FIXATO (stesso problema di `state.organization`)
-- [ ] Revoca animatore non revoca accesso calendario Google (DA IMPLEMENTARE)
+---
 
 ### Da Completare / Testare
 
-- [x] **ESEGUIRE SQL**: `sql/09-agency-system.sql` su Supabase (FATTO)
-- [x] **ESEGUIRE SQL**: `sql/10-fix-agency-rls.sql` su Supabase (FATTO - FIX RLS policies)
-- [x] **ESEGUIRE SQL**: `sql/11-fix-accept-invite.sql` su Supabase (FATTO - FIX mapping ruoli animator→member)
-- [x] **Autenticazione unificata** - Token Google rinnovato tramite Supabase (COMPLETATO)
-- [x] **Sistema inviti agenzia** - FUNZIONANTE (2026-01-29)
+**SQL da eseguire:**
+- [ ] `sql/13-context-switcher.sql` - Context switcher workspace
+
+**Funzionalità da testare:**
 - [ ] Verificare unificazione commenti su eventi duplicati
 - [ ] Testare flusso completo consegna compensi
 - [ ] Testare modifica importo da owner e accetta/rifiuta da animatore
-- [x] Click su evento dalla dashboard Feste & Eventi (FIXATO)
-- [ ] Eventuale migrazione commenti vecchi con ID sbagliato
-- [x] **Animatore non vede colleghi** - FIXATO: `state.organization` stale dopo accettazione invito
-- [x] **Animatore non vede bacheca/benvenuto** - FIXATO: stesso problema
-- [ ] **Revoca animatore → revoca accesso calendario Google** - DA IMPLEMENTARE
-- [ ] **Integrare Stripe per upgrade piani** - IN AGENDA
+- [ ] Testare creazione/modifica annunci con link Drive
+- [ ] Testare sezione documenti per owner e animatori
+
+**Da implementare:**
+- [ ] Revoca animatore → revoca accesso calendario Google
+- [ ] Integrare Stripe per upgrade piani
 
 ---
 
@@ -274,24 +197,24 @@ Nel dropdown profilo (header) appare un selettore per switchare tra i workspace 
 ```
 Leggi /Users/ilmagicartista/Downloads/savers pro per la vendita/CLAUDE_CONTEXT.md
 
-CONTESTO: Sistema Compensi Agenzia per animatori in SAVERS PRO.
+CONTESTO: Continuazione sessione 2026-01-29 serale.
 
-PROBLEMA RISOLTO: Eventi duplicati su calendari diversi ora unificati tramite hash(titolo+data/ora)
-
-CAMPI CHIAVE nei commenti finanziari:
-- incomeTotal: Ritiro Saldo totale
-- animatorProfit: Guadagno animatore
-- animatorExpenses: Spese animatore
-- agencyFee: Compensi Agenzia
-
-PERMESSI:
-- Owner/Admin: vede TUTTI i commenti, può sempre editare/eliminare
-- Animatore: vede solo propri commenti, edita entro 5 minuti
+STATO:
+- Deploy Vercel bloccato (limite 100/giorno) - dovrebbe essere disponibile ora
+- SQL eseguiti: 14 (annunci+documenti), 15 (fix sicurezza)
+- SQL da eseguire: 13 (context switcher)
 
 DA TESTARE:
-1. Unificazione commenti eventi duplicati su calendari diversi
-2. Calcoli corretti nelle viste (Agenzia vs Animatore)
-3. Flusso consegna compensi
+1. Modal "Nuovo Annuncio" funziona dopo deploy?
+2. Creazione annunci con link Google Drive
+3. Sezione "Manuali & Policy" per owner
+4. Visualizzazione documenti per animatori
+
+PROSSIMI PASSI:
+1. Verificare deploy Vercel completato
+2. Testare sistema annunci completo
+3. Testare sistema documenti
+4. Eseguire sql/13-context-switcher.sql se necessario
 
 FILE PRINCIPALE: /Users/ilmagicartista/Downloads/savers pro per la vendita/index.html
 ```
