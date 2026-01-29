@@ -23700,7 +23700,8 @@ let agencyState = {
 
 // Carica dati agenzia
 async function loadAgencyData() {
-    if (!sb || !state.profile?.organization_id) return;
+    const supabase = getSupabase();
+    if (!supabase || !state.profile?.organization_id) return;
 
     // Verifica se owner anche tramite organizations.owner_id
     const isOrgOwner = state.organization?.owner_id === state.profile?.id;
@@ -23725,7 +23726,7 @@ async function loadAgencyData() {
 
     try {
         // Carica membri agenzia
-        const { data: members, error: membersError } = await sb
+        const { data: members, error: membersError } = await supabase
             .from('agency_members')
             .select('*')
             .eq('agency_id', state.profile.organization_id)
@@ -23741,7 +23742,7 @@ async function loadAgencyData() {
         agencyState.pendingInvites = members?.filter(m => m.status === 'pending') || [];
 
         // Carica info organizzazione
-        const { data: org } = await sb
+        const { data: org } = await supabase
             .from('organizations')
             .select('plan, max_members')
             .eq('id', state.profile.organization_id)
@@ -23890,6 +23891,12 @@ function loadCalendarsForInvite() {
 
 // Invia invito animatore
 async function sendAnimatorInvite() {
+    const supabase = getSupabase();
+    if (!supabase) {
+        showToast('Errore connessione database', 'error');
+        return;
+    }
+
     const email = document.getElementById('inviteAnimatorEmail').value.trim().toLowerCase();
     const name = document.getElementById('inviteAnimatorName').value.trim();
     const role = document.getElementById('inviteAnimatorRole').value;
@@ -23934,7 +23941,7 @@ async function sendAnimatorInvite() {
         showToast('Invio invito...', 'info');
 
         // Inserisci in agency_members
-        const { data: newMember, error } = await sb
+        const { data: newMember, error } = await supabase
             .from('agency_members')
             .insert({
                 agency_id: state.profile.organization_id,
@@ -23952,7 +23959,7 @@ async function sendAnimatorInvite() {
         if (error) throw error;
 
         // Log invito
-        await sb.from('agency_invites_log').insert({
+        await supabase.from('agency_invites_log').insert({
             agency_id: state.profile.organization_id,
             member_id: newMember.id,
             invited_email: email,
@@ -24072,6 +24079,9 @@ async function openEditAnimatorModal(memberId) {
 
 // Salva permessi animatore
 async function saveAnimatorPermissions() {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
     const memberId = window.currentEditAnimatorId;
     if (!memberId) return;
 
@@ -24107,7 +24117,7 @@ async function saveAnimatorPermissions() {
             updateData.suspended_at = new Date().toISOString();
         }
 
-        const { error } = await sb
+        const { error } = await supabase
             .from('agency_members')
             .update(updateData)
             .eq('id', memberId);
@@ -24126,6 +24136,9 @@ async function saveAnimatorPermissions() {
 
 // Revoca accesso animatore
 async function revokeAnimatorAccess() {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
     const memberId = window.currentEditAnimatorId;
     if (!memberId) return;
 
@@ -24137,7 +24150,7 @@ async function revokeAnimatorAccess() {
     }
 
     try {
-        const { error } = await sb
+        const { error } = await supabase
             .from('agency_members')
             .update({
                 status: 'revoked',
@@ -24149,7 +24162,7 @@ async function revokeAnimatorAccess() {
         if (error) throw error;
 
         // Log
-        await sb.from('agency_invites_log').insert({
+        await supabase.from('agency_invites_log').insert({
             agency_id: state.profile.organization_id,
             member_id: memberId,
             invited_email: member.invited_email,
@@ -24169,10 +24182,13 @@ async function revokeAnimatorAccess() {
 
 // Annulla invito pendente
 async function cancelInvite(memberId) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
     if (!confirm('Annullare questo invito?')) return;
 
     try {
-        const { error } = await sb
+        const { error } = await supabase
             .from('agency_members')
             .delete()
             .eq('id', memberId)
@@ -24191,13 +24207,16 @@ async function cancelInvite(memberId) {
 
 // Reinvia invito
 async function resendInvite(memberId) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
     try {
         // Rigenera token e estendi scadenza
         const newToken = crypto.randomUUID();
         const newExpiry = new Date();
         newExpiry.setDate(newExpiry.getDate() + 7);
 
-        const { data: member, error } = await sb
+        const { data: member, error } = await supabase
             .from('agency_members')
             .update({
                 invite_token: newToken,
@@ -24265,10 +24284,16 @@ async function checkAndAcceptInvite() {
     }
 
     try {
+        const supabase = getSupabase();
+        if (!supabase) {
+            showToast('Errore connessione', 'error');
+            return;
+        }
+
         showToast('Accettazione invito...', 'info');
 
         // Chiama funzione Supabase per accettare
-        const { data, error } = await sb.rpc('accept_agency_invite', {
+        const { data, error } = await supabase.rpc('accept_agency_invite', {
             p_invite_token: token,
             p_user_id: state.profile.id
         });
