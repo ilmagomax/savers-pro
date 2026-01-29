@@ -5138,6 +5138,9 @@ async function ensureUserProfile() {
         await checkPendingInvite();
         await checkAndAcceptInvite();
 
+        // Ripristina la pagina salvata ORA che i dati sono pronti
+        restoreLastPage();
+
         return true;
 
     } catch (err) {
@@ -10725,10 +10728,8 @@ function renderAll() {
             updateAllStats();
         }, 150);
 
-        // Ripristina la pagina salvata dopo il rendering
-        setTimeout(() => {
-            restoreLastPage();
-        }, 200);
+        // NOTA: restoreLastPage viene chiamata da ensureUserProfile
+        // dopo che i dati Supabase sono pronti
     });
 }
 
