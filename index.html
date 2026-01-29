@@ -23702,7 +23702,18 @@ let agencyState = {
 async function loadAgencyData() {
     if (!sb || !state.profile?.organization_id) return;
 
-    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin;
+    // Verifica se owner anche tramite organizations.owner_id
+    const isOrgOwner = state.organization?.owner_id === state.profile?.id;
+    const isOwnerOrAdmin = state.profile?.org_role === 'owner' || state.profile?.org_role === 'admin' || state.profile?.is_super_admin || isOrgOwner;
+
+    console.log('🏢 loadAgencyData - isOwnerOrAdmin:', isOwnerOrAdmin, {
+        org_role: state.profile?.org_role,
+        is_super_admin: state.profile?.is_super_admin,
+        isOrgOwner: isOrgOwner,
+        organization_owner_id: state.organization?.owner_id,
+        profile_id: state.profile?.id
+    });
+
     const agencyCard = document.getElementById('agencyManagementCard');
 
     // Mostra card solo per owner/admin
