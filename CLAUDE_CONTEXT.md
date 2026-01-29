@@ -140,42 +140,78 @@ Quando owner apre un evento, cerca commenti su TUTTI gli ID possibili:
 7. **Privacy dashboard Feste & Eventi** - Animatore vede solo propri commenti finanziari (non quelli degli altri)
 8. **Navigazione "Vai all'evento"** - Fix ricerca evento tramite hash universale + uso `originalEventId` per navigazione
 9. **Sistema Agenzia completo** - Nuove tabelle `agency_members`, `agency_calendar_access`, gestione inviti/permessi
+10. **Bacheca/Colleghi non visibili per animatore** - Fix: `state.organization` non veniva aggiornato dopo accettazione invito. L'animatore restava con la sua vecchia org personale, veniva identificato come `isOrgOwner=true` e la card non veniva mostrata. Aggiunto refresh forzato di `state.organization` in `loadAgencyData()` e `loadMyAgencyFullData()`.
 
-### Sistema Agenzia (NUOVO!)
+### Sistema Agenzia (AGGIORNATO 2026-01-29)
 
-**File SQL**: `sql/09-agency-system.sql`
+**File SQL**:
+- `sql/09-agency-system.sql` - Schema base (tabelle, funzioni, trigger)
+- `sql/10-fix-agency-rls.sql` - Fix RLS policies (evita ricorsione infinita)
+- `sql/11-fix-accept-invite.sql` - Fix funzione accept_agency_invite (mapping ruoli)
 
 **Tabelle**:
 - `agency_members` - Membri dell'agenzia con ruoli e permessi granulari
 - `agency_calendar_access` - Calendari assegnati a ogni membro
 - `agency_invites_log` - Log di inviti/revoche per audit
 
+**Mapping Ruoli** (agency_members.role → profiles.org_role):
+- `animator` → `member` (check constraint su profiles ammette solo: owner, admin, member, viewer)
+- `admin` → `admin`
+- `owner` → `owner`
+- `viewer` → `member`
+
 **Funzioni JS chiave**:
 - `isAgencyOwnerOrAdmin()` - Verifica se utente è owner/admin
 - `canSeeAllFinances()` - Verifica permesso vedere tutti i dati finanziari
 - `getMyAgencyPermissions()` - Ottiene permessi granulari dell'utente
 - `loadAgencyData()` - Carica membri e inviti
-- `sendAnimatorInvite()` - Invia invito a nuovo animatore
+- `loadMyAgencyFullData()` - Carica dati completi per animatore (colleghi, calendari, bacheca)
+- `sendAnimatorInvite()` - Invia invito a nuovo animatore (con condivisione automatica calendari Google)
 - `checkAndAcceptInvite()` - Accetta invito da URL (#invite=token)
+- `acceptInviteWithToken()` - Chiama RPC `accept_agency_invite` e mostra modal benvenuto
+- `showWelcomeToAgencyModal()` - Modal di benvenuto dopo accettazione invito
+- `shareCalendarsWithUser()` - Condivide calendari Google automaticamente con ACL
+- `createCalendarForAnimator()` - Crea nuovo calendario da assegnare
 
-**Flusso**:
+**Flusso Invito**:
 1. Capo agenzia va su TEAM > Gestione Agenzia
-2. Clicca "Invita Animatore", inserisce email e permessi
-3. Riceve link da condividere
-4. Animatore clicca link, accetta invito
-5. Animatore vede solo i calendari assegnati e i propri dati finanziari
+2. Clicca "Invita Animatore", inserisce email, ruolo, permessi
+3. Seleziona calendari da condividere (condivisione automatica Google Calendar)
+4. Riceve link da condividere (es. `#invite=token-uuid`)
+5. Animatore clicca link, fa login/registrazione
+6. Token salvato in localStorage durante auth flow
+7. Dopo login, `checkPendingInvite()` chiama `accept_agency_invite` RPC
+8. RPC aggiorna: agency_members.status='active', profiles.organization_id, profiles.org_role
+9. Modal benvenuto con opzioni "Vai alla Home" / "Vai al Team"
+10. Animatore vede card "La Mia Agenzia" con colleghi, calendari, bacheca
+
+**Card "La Mia Agenzia" (per animatori)**:
+- Header con nome agenzia, ruolo, data iscrizione
+- Sezione Bacheca Annunci (messaggio di benvenuto)
+- Sezione "I Miei Colleghi" con avatar e ruoli
+- Sezione "I Miei Calendari" assegnati
+
+**Problemi Noti da Risolvere**:
+- [x] ~~Animatore non vede colleghi~~ - FIXATO (bug era in `state.organization` stale)
+- [x] ~~Bacheca non mostra contenuto~~ - FIXATO (stesso problema di `state.organization`)
+- [ ] Revoca animatore non revoca accesso calendario Google (DA IMPLEMENTARE)
 
 ### Da Completare / Testare
 
-- [ ] **ESEGUIRE SQL**: `sql/09-agency-system.sql` su Supabase
+- [x] **ESEGUIRE SQL**: `sql/09-agency-system.sql` su Supabase (FATTO)
+- [x] **ESEGUIRE SQL**: `sql/10-fix-agency-rls.sql` su Supabase (FATTO - FIX RLS policies)
+- [x] **ESEGUIRE SQL**: `sql/11-fix-accept-invite.sql` su Supabase (FATTO - FIX mapping ruoli animator→member)
 - [x] **Autenticazione unificata** - Token Google rinnovato tramite Supabase (COMPLETATO)
+- [x] **Sistema inviti agenzia** - FUNZIONANTE (2026-01-29)
 - [ ] Verificare unificazione commenti su eventi duplicati
 - [ ] Testare flusso completo consegna compensi
 - [ ] Testare modifica importo da owner e accetta/rifiuta da animatore
 - [x] Click su evento dalla dashboard Feste & Eventi (FIXATO)
 - [ ] Eventuale migrazione commenti vecchi con ID sbagliato
-- [ ] Testare sistema inviti agenzia
-- [ ] Integrare Stripe per upgrade piani
+- [x] **Animatore non vede colleghi** - FIXATO: `state.organization` stale dopo accettazione invito
+- [x] **Animatore non vede bacheca/benvenuto** - FIXATO: stesso problema
+- [ ] **Revoca animatore → revoca accesso calendario Google** - DA IMPLEMENTARE
+- [ ] **Integrare Stripe per upgrade piani** - IN AGENDA
 
 ---
 
