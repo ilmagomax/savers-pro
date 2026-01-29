@@ -25142,7 +25142,10 @@ function showDynamicModal(modalId, title, content) {
         document.getElementById(`${modalId}Body`).innerHTML = content;
     }
 
-    modal.classList.add('show');
+    // Blocca scroll del body
+    document.body.style.overflow = 'hidden';
+    // Usa 'active' come le altre modal
+    modal.classList.add('active');
 }
 
 // Helper escape HTML
@@ -25913,7 +25916,8 @@ function showWelcomeToAgencyModal(agencyName) {
         document.getElementById(`${modalId}Body`).innerHTML = modalContent;
     }
 
-    modal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    modal.classList.add('active');
     showToast('Benvenuto nel team! 🎉', 'success');
 }
 
