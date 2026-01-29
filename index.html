@@ -5135,8 +5135,8 @@ async function ensureUserProfile() {
         console.log('✅ All data loaded from Supabase');
 
         // Controlla inviti pendenti e inviti nell'URL
-        checkAndAcceptInvite();
-        checkPendingInvite();
+        await checkPendingInvite();
+        await checkAndAcceptInvite();
 
         return true;
 
@@ -24455,9 +24455,13 @@ async function upgradePlan(planType) {
 // Accetta invito (chiamato all'avvio se c'è #invite=token nell'URL)
 async function checkAndAcceptInvite() {
     const hash = window.location.hash;
+    console.log('🔗 checkAndAcceptInvite - hash:', hash);
+
     if (!hash.startsWith('#invite=')) return;
 
     const token = hash.replace('#invite=', '');
+    console.log('🎟️ Invite token trovato:', token);
+
     if (!token) return;
 
     // Rimuovi hash dall'URL
@@ -24466,10 +24470,13 @@ async function checkAndAcceptInvite() {
     // Verifica se loggato
     if (!state.profile?.id) {
         // Salva token per dopo il login
+        console.log('👤 Utente non loggato, salvo token per dopo');
         localStorage.setItem('pendingInviteToken', token);
         showToast('Effettua il login per accettare l\'invito', 'info');
         return;
     }
+
+    console.log('✅ Utente loggato, accetto invito per:', state.profile.email);
 
     try {
         const supabase = getSupabase();
@@ -24481,10 +24488,13 @@ async function checkAndAcceptInvite() {
         showToast('Accettazione invito...', 'info');
 
         // Chiama funzione Supabase per accettare
+        console.log('📤 Chiamata RPC accept_agency_invite con token:', token);
         const { data, error } = await supabase.rpc('accept_agency_invite', {
             p_invite_token: token,
             p_user_id: state.profile.id
         });
+
+        console.log('📥 Risposta RPC:', { data, error });
 
         if (error) throw error;
 
@@ -24494,25 +24504,26 @@ async function checkAndAcceptInvite() {
             await ensureUserProfile();
             window.location.reload();
         } else {
+            console.warn('⚠️ Invito non accettato:', data);
             showToast(data?.error || 'Invito non valido o scaduto', 'error');
         }
 
     } catch (err) {
-        console.error('Errore accettazione invito:', err);
+        console.error('❌ Errore accettazione invito:', err);
         showToast('Errore: ' + err.message, 'error');
     }
 }
 
-// Controlla invito pendente salvato
+// Controlla invito pendente salvato e ripristina hash
 async function checkPendingInvite() {
     const token = localStorage.getItem('pendingInviteToken');
     if (!token || !state.profile?.id) return;
 
     localStorage.removeItem('pendingInviteToken');
 
-    // Simula click su link invito
+    // Ripristina hash per checkAndAcceptInvite
     window.location.hash = `#invite=${token}`;
-    await checkAndAcceptInvite();
+    // checkAndAcceptInvite verrà chiamata subito dopo
 }
 
 // ============================================
