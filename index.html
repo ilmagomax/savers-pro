@@ -179,8 +179,10 @@
                             <div style="padding:16px; border-bottom:1px solid var(--border-color); background:var(--bg-secondary);">
                                 <div style="font-weight:600; font-size:0.95rem;" id="dropdownUserName">Utente</div>
                                 <div style="font-size:0.8rem; color:var(--text-secondary);" id="dropdownUserEmail">email@example.com</div>
-                                <div style="margin-top:8px; display:flex; align-items:center; gap:6px;">
+                                <div style="margin-top:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                     <span style="font-size:0.7rem; padding:2px 8px; background:var(--accent); color:white; border-radius:10px;" id="dropdownUserPlan">Free</span>
+                                    <span style="font-size:0.7rem; padding:2px 8px; background:#f97316; color:white; border-radius:10px; display:none;" id="dropdownUserOrg">🏢 Agenzia</span>
+                                    <span style="font-size:0.7rem; padding:2px 8px; background:#10b981; color:white; border-radius:10px; display:none;" id="dropdownUserRole">Animatore</span>
                                 </div>
                             </div>
                             <div style="padding:8px 0;">
@@ -11219,6 +11221,42 @@ function toggleProfileDropdown(event) {
             'enterprise': 'Enterprise'
         }[plan] || 'Free';
         document.getElementById('dropdownUserPlan').textContent = planLabel;
+
+        // Badge organizzazione
+        const orgBadge = document.getElementById('dropdownUserOrg');
+        const roleBadge = document.getElementById('dropdownUserRole');
+
+        if (org && org.name) {
+            // Mostra nome organizzazione (troncato se troppo lungo)
+            const orgName = org.name.length > 15 ? org.name.substring(0, 15) + '...' : org.name;
+            orgBadge.textContent = '🏢 ' + orgName;
+            orgBadge.style.display = 'inline-block';
+
+            // Mostra ruolo nell'agenzia
+            const role = profile.org_role || 'member';
+            const roleLabels = {
+                'owner': '👑 Proprietario',
+                'admin': '⚙️ Admin',
+                'animator': '🎭 Animatore',
+                'viewer': '👁️ Viewer',
+                'member': '👤 Membro'
+            };
+            roleBadge.textContent = roleLabels[role] || roleLabels.member;
+            roleBadge.style.display = 'inline-block';
+
+            // Colore badge ruolo in base al ruolo
+            const roleColors = {
+                'owner': '#8b5cf6',
+                'admin': '#3b82f6',
+                'animator': '#10b981',
+                'viewer': '#6b7280',
+                'member': '#6b7280'
+            };
+            roleBadge.style.background = roleColors[role] || roleColors.member;
+        } else {
+            orgBadge.style.display = 'none';
+            roleBadge.style.display = 'none';
+        }
 
         dropdown.style.display = 'block';
 
