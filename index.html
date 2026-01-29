@@ -24269,14 +24269,29 @@ async function sendAnimatorInvite() {
         return;
     }
 
-    // Verifica se già invitato
+    // Verifica se già invitato (escludi revocati e sospesi che possono essere re-invitati)
     const existingMember = agencyState.members.find(m =>
-        m.invited_email?.toLowerCase() === email ||
-        m.user_id && state.profile?.email?.toLowerCase() === email
+        (m.invited_email?.toLowerCase() === email ||
+        (m.user_id && state.profile?.email?.toLowerCase() === email)) &&
+        (m.status === 'active' || m.status === 'pending')
     );
     if (existingMember) {
         showToast('Questo utente è già nel team o ha un invito pendente', 'error');
         return;
+    }
+
+    // Se c'è un membro revocato con questa email, eliminalo prima di re-invitare
+    const revokedMember = agencyState.members.find(m =>
+        (m.invited_email?.toLowerCase() === email) &&
+        (m.status === 'revoked' || m.status === 'suspended')
+    );
+    if (revokedMember) {
+        console.log('🗑️ Rimuovo vecchio record revocato per:', email);
+        try {
+            await supabase.from('agency_members').delete().eq('id', revokedMember.id);
+        } catch (e) {
+            console.warn('Errore rimozione vecchio record:', e);
+        }
     }
 
     // Raccogli permessi
